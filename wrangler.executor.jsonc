@@ -1,0 +1,57 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "adychat-executor",
+  "main": "src/executor/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // No fetch handler in src/executor/index.ts and no address: this Worker
+  // holds the only token that can spend money, and there is no way to
+  // reach it from the internet. Nothing gets to it except its own clock
+  // and the confirmations already written to the shared database.
+  //
+  // Template with placeholders, like wrangler.jsonc. Deploys read
+  // wrangler.executor.local.jsonc (gitignored): npm run deploy:executor
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+
+  // Every minute: what the owner confirms is applied in less than one.
+  "triggers": { "crons": ["* * * * *"] },
+
+  "d1_databases": [
+    { "binding": "DB", "database_name": "adychat", "database_id": "REPLACE_ME" }
+  ],
+  "kv_namespaces": [{ "binding": "IMAGES", "id": "REPLACE_ME" }],
+
+  "vars": {
+    "META_ACCOUNT_ID": "REPLACE_ME",
+    "META_PAGE_ID": "REPLACE_ME",
+    "META_IG_USER_ID": "REPLACE_ME",
+    "META_IG_USERNAME": "REPLACE_ME",
+    "META_PIXEL_ID": "REPLACE_ME",
+    "SITE_URL": "REPLACE_ME",
+    "META_DSA_BENEFICIARY": "REPLACE_ME",
+    "META_DSA_PAYOR": "REPLACE_ME",
+    "BRAND_NAME": "REPLACE_ME",
+    "COUNTRY": "REPLACE_ME",
+    "TIME_ZONE": "Europe/Madrid",
+    // THE CAPS THAT RULE. They live here and not in the database, so that
+    // nothing coming in through the panel can raise them. Every confirmed
+    // action is validated against them again before it touches Meta. They
+    // change only by deploying.
+    "MAX_ADSET_DAILY_EUR": "REPLACE_ME",
+    "MAX_ACCOUNT_DAILY_EUR": "REPLACE_ME",
+    // Where Meta downloads the videos from: the panel's address, with a
+    // signature (src/shared/sign.ts).
+    "MEDIA_URL_BASE": "REPLACE_ME",
+    // Leads from the lead form ads are emailed to the owner.
+    "LEADS_FROM": "REPLACE_ME",               // Brand <ads@example.com>
+    "LEADS_NOTIFY_TO": "REPLACE_ME"           // owner@example.com
+  }
+
+  // Secrets:
+  //   META_TOKEN_WRITE   the token whose user can manage campaigns
+  //   MEDIA_SIGNING_KEY  the same as the panel's
+  //   RESEND_API_KEY     to email new leads (a send-only key is enough)
+}

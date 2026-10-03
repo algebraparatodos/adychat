@@ -1,0 +1,24 @@
+node_modules/
+.wrangler/
+dist/
+*.log
+
+# Nothing about a real installation belongs in this repository. The ids,
+# the names and the deploy targets live in gitignored local files, and the
+# credentials live in Worker secrets. A local file is the easiest way to
+# leak one by accident, so every one of them is listed here.
+.dev.vars
+.env
+.claves.env
+wrangler.local.jsonc
+wrangler.executor.local.jsonc
+*.local.*
+.respaldos/
+
+# The sync from the private panel this code comes from. The rules and the
+# deny list name exactly what must not be published, so they cannot be
+# published either. See SYNC.md.
+sync.local.mjs
+deny.local.json
+.sync-state.local.json
+.sync-staging/

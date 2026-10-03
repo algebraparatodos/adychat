@@ -1,0 +1,28 @@
+# Typecheck, tests and the clean check on every push.
+#
+# test/boundary.test.ts is what enforces the one security claim this
+# project makes, that the half with an address on the internet cannot
+# write to Meta. check-clean is what keeps a real installation's ids out
+# of a public repository. A guard that only runs when somebody remembers
+# to run it is not a guard. Here check-clean has no private deny list, so
+# it runs the generic patterns only.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run check-clean
