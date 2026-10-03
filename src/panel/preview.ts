@@ -12,7 +12,7 @@
  */
 
 import { WEB_OBJECTIVES, type Action, type AdCopy, type Objective, type Placement } from "../shared/actions.ts";
-import { creativeOf, hasPlacements, type ReadyMedia } from "../shared/creative.ts";
+import { creativeOf, hasPlacements, type ImageRef, type ReadyMedia } from "../shared/creative.ts";
 import type { MetaVars } from "../shared/env.ts";
 import type { MetaReader } from "./meta-read.ts";
 
@@ -23,6 +23,22 @@ export const FORMATS: Record<Placement, string> = {
   reels: "INSTAGRAM_REELS",
 };
 export type Format = Placement;
+
+/**
+ * Lo que mide de verdad lo que dibuja Meta en cada sitio, medido en el
+ * navegador el 03/10/2026. El recuadro que devuelve declara otra cosa (Reels:
+ * 274 × 213 para algo de 320 × 624), y con esa medida salía una barra de
+ * scroll. La página nunca deja hacer scroll dentro: se agranda o se achica
+ * entero.
+ */
+export const SIZES: Record<Placement, { width: number; height: number }> = {
+  feed: { width: 320, height: 534 },
+  story: { width: 320, height: 567 },
+  reels: { width: 320, height: 624 },
+};
+
+/** Firma la dirección del panel desde la que Meta descarga una foto (shared/sign.ts). */
+export type SignUrl = (key: string) => Promise<string>;
 
 /**
  * Si la foto de este anuncio se puede recortar para un sitio, y cuál es el
@@ -61,12 +77,15 @@ function attr(tag: string, name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-async function readyMedia(db: D1Database, meta: MetaReader, key: string): Promise<ReadyMedia | Preview> {
+async function readyMedia(db: D1Database, meta: MetaReader, key: string, signUrl?: SignUrl): Promise<ReadyMedia | Preview> {
   const row = await db.prepare(`select kind, meta_hash, meta_video_id, meta_error from media where key = ? and complete = 1`).bind(key).first<MediaRow>();
   if (!row) return { error: "El material de este anuncio ya no está en el panel." };
   if (row.meta_error) return { error: `Meta no aceptó este archivo: ${row.meta_error}` };
   if (row.kind === "image") {
-    return row.meta_hash ? { kind: "image", hash: row.meta_hash } : { wait: "Subiendo la foto a Meta para la vista previa…" };
+    if (row.meta_hash) return { kind: "image", image: { hash: row.meta_hash } };
+    // Todavía no está en Meta (el ejecutor la sube en el minuto): Meta la
+    // descarga del panel para la vista previa, sin esperar.
+    return signUrl ? { kind: "image", image: { url: await signUrl(key) } } : { wait: "Subiendo la foto a Meta para la vista previa…" };
   }
   if (!row.meta_video_id) return { wait: "Subiendo el vídeo a Meta para la vista previa…" };
   const st = await meta.get<{ status?: { video_status?: string; processing_progress?: number } }>(row.meta_video_id, { fields: "status" });
@@ -101,6 +120,7 @@ export async function preview(
   index: number,
   format: Format,
   state = "proposed",
+  signUrl?: SignUrl,
 ): Promise<Preview> {
   const ad = previewAds(action)[index];
   if (!ad) return { error: "Esta propuesta no tiene ese anuncio." };
@@ -111,18 +131,18 @@ export async function preview(
     let media: ReadyMedia | null = null;
     if (!ad.copy.instagramMediaId) {
       if (!ad.copy.mediaKey) return { error: "Este anuncio no tiene material.", crop };
-      const got = await readyMedia(db, meta, ad.copy.mediaKey);
+      const got = await readyMedia(db, meta, ad.copy.mediaKey, signUrl);
       if ("wait" in got || "error" in got || "src" in got) return { ...got, crop };
       media = got;
       // Los recortes que el dueño hizo para cada sitio.
       if (got.kind === "image" && ad.copy.placements) {
-        const placements: Partial<Record<Placement, string>> = {};
+        const placements: Partial<Record<Placement, ImageRef>> = {};
         for (const [p, key] of Object.entries(ad.copy.placements) as [Placement, string][]) {
-          const c = await readyMedia(db, meta, key);
+          const c = await readyMedia(db, meta, key, signUrl);
           if ("wait" in c) return { wait: "Subiendo el recorte a Meta…", crop };
           if ("error" in c || "src" in c) return { ...c, crop };
           if (c.kind !== "image") return { error: "El recorte no es una foto.", crop };
-          placements[p] = c.hash;
+          placements[p] = c.image;
         }
         media = { ...got, placements };
       }
@@ -139,7 +159,10 @@ export async function preview(
     const body = res.data?.[0]?.body ?? "";
     const frame = body.match(FRAME);
     if (!frame?.[1]) return { error: "Meta no devolvió la vista previa.", crop };
-    return { src: frame[1].replace(/&amp;/g, "&"), width: attr(frame[0], "width", 320), height: attr(frame[0], "height", 560), crop };
+    // Lo que mide de verdad (SIZES), si Meta declara menos.
+    const width = Math.max(attr(frame[0], "width", 0), SIZES[format].width);
+    const height = Math.max(attr(frame[0], "height", 0), SIZES[format].height);
+    return { src: frame[1].replace(/&amp;/g, "&"), width, height, crop };
   } catch (err) {
     return { error: `Meta no pudo dibujar la vista previa: ${String(err instanceof Error ? err.message : err).replace(/^Meta \d+: /, "")}`, crop };
   }

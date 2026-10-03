@@ -34,11 +34,20 @@ export const NO_ENHANCEMENTS = {
 };
 
 /**
- * El material ya subido a Meta. Una foto puede traer, además, el hash de su
- * recorte para cada sitio de Instagram donde el dueño la recortó.
+ * Una foto para Meta: su hash en la biblioteca de la cuenta o, sólo en la
+ * vista previa y mientras el ejecutor la sube, la dirección firmada del
+ * panel desde la que Meta la descarga (así no hay que esperar al ejecutor,
+ * que se despierta una vez por minuto). El anuncio de verdad va siempre
+ * con hash.
+ */
+export type ImageRef = { hash: string } | { url: string };
+
+/**
+ * El material para Meta. Una foto puede traer, además, la de su recorte
+ * para cada sitio de Instagram donde el dueño la recortó.
  */
 export type ReadyMedia =
-  | { kind: "image"; hash: string; placements?: Partial<Record<Placement, string>> }
+  | { kind: "image"; image: ImageRef; placements?: Partial<Record<Placement, ImageRef>> }
   | { kind: "video"; videoId: string; thumbnail: string };
 
 /** Adónde lleva el anuncio y con qué botón, según el objetivo de su conjunto. */
@@ -139,7 +148,7 @@ export function creativeOf(
   }
   if (!media) throw new Error("el material de este anuncio ya no está en el panel");
   if (media.kind === "image" && media.placements && Object.keys(media.placements).length > 0) {
-    return byPlacement(vars, copy, dest, media.hash, media.placements);
+    return byPlacement(vars, copy, dest, media.image, media.placements);
   }
   const link = linkOfDestination(dest);
   const story =
@@ -160,7 +169,8 @@ export function creativeOf(
             message: copy.primaryText,
             name: copy.headline,
             ...(copy.description ? { description: copy.description } : {}),
-            image_hash: media.hash,
+            // Por URL sólo en la vista previa (ImageRef).
+            ...("hash" in media.image ? { image_hash: media.image.hash } : { picture: media.image.url }),
             ...(cta ? { call_to_action: cta } : {}),
           },
         };
@@ -191,19 +201,23 @@ function byPlacement(
   vars: MetaVars,
   copy: AdCopy,
   dest: Destination,
-  original: string,
-  crops: Partial<Record<Placement, string>>,
+  original: ImageRef,
+  crops: Partial<Record<Placement, ImageRef>>,
 ): Record<string, unknown> {
   if (dest.kind !== "web") throw new Error("el recorte por sitio sólo vale, de momento, en anuncios que llevan a la web");
-  const labels = new Map<string, Placement[]>();
+  // Cada foto distinta, con los sitios donde sale.
+  const labels = new Map<string, { ref: ImageRef; places: Placement[] }>();
   for (const p of PLACEMENTS) {
-    const hash = crops[p] ?? original;
-    labels.set(hash, [...(labels.get(hash) ?? []), p]);
+    const ref = crops[p] ?? original;
+    const id = "hash" in ref ? ref.hash : ref.url;
+    const seen = labels.get(id) ?? { ref, places: [] };
+    seen.places.push(p);
+    labels.set(id, seen);
   }
   return {
     object_story_spec: { page_id: vars.META_PAGE_ID, instagram_user_id: vars.META_IG_USER_ID },
     asset_feed_spec: {
-      images: [...labels].map(([hash, ps]) => ({ hash, adlabels: ps.map((name) => ({ name })) })),
+      images: [...labels.values()].map(({ ref, places }) => ({ ...ref, adlabels: places.map((name) => ({ name })) })),
       bodies: [{ text: copy.primaryText }],
       titles: [{ text: copy.headline }],
       ...(copy.description ? { descriptions: [{ text: copy.description }] } : {}),
