@@ -130,7 +130,7 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
 .card.applied{border-left-color:var(--ok)} .card.failed{border-left-color:var(--bad)} .card.cancelled,.card.expired{border-left-color:var(--line);opacity:.8}
 .card .err{color:var(--bad);font-size:13px;margin-top:6px}
 /* Vista previa a pantalla completa (03/10/2026) */
-#pvModal{position:fixed;inset:0;z-index:50;background:rgba(12,14,18,.94);display:flex;flex-direction:column;color:#f3eee4}
+#pvModal{position:fixed;inset:0;z-index:50;background:#0e1115;display:flex;flex-direction:column;color:#f3eee4}
 #pvModal.hidden{display:none}
 .pvm-head{display:flex;align-items:center;gap:10px;padding:10px 12px 6px 16px}
 .pvm-head h2{font-size:16px;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -144,8 +144,8 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
 .pvm-tabs button[aria-selected=true]{background:#f3eee4;color:#1a1f25;font-weight:600}
 .pvm-tabs button:disabled{opacity:.45}
 .pvm-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px 10px}
-.pvm-fit{position:relative;flex:none}
-.pvm-fit iframe{position:absolute;top:0;left:0;border:0;background:#fff;border-radius:10px;transform-origin:top left}
+.pvm-fit{position:relative;flex:none;overflow:hidden;border-radius:10px}
+.pvm-fit iframe{position:absolute;top:0;left:0;border:0;background:#fff;transform-origin:top left}
 .pvm-msg{color:#cfc8ba;text-align:center;padding:24px;font-size:15px;max-width:440px}
 .pvm-msg.err{color:#f0a49b}
 .pvm-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;padding:10px 14px calc(12px + env(safe-area-inset-bottom))}
@@ -674,6 +674,10 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
     f.title = "Vista previa del anuncio en " + PLACE[pv.fmt];
     f.setAttribute("sandbox","allow-scripts allow-same-origin allow-popups");
     f.setAttribute("allow","autoplay");
+    // Sin barra de scroll: el contenido de Meta se pasa por unos píxeles del
+    // alto que declara, y la barra le come ancho y lo alarga más. Lo que sobra
+    // se corta en el borde del recuadro.
+    f.setAttribute("scrolling","no");
     box.appendChild(f); pvStage.appendChild(box);
     pv.frame = { w:r.width, h:r.height, box:box, f:f };
     pvFit();

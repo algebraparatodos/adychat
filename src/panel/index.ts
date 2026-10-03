@@ -37,6 +37,7 @@ import {
   startUpload,
 } from "./media.ts";
 import { limitsOf, missingMeta, panelTitle, timeZoneOf } from "../shared/env.ts";
+import { signedMediaUrl } from "../shared/sign.ts";
 
 export type Env = ChatEnv & {
   /** Las fotos, en Workers KV: gratis y sin tarjeta (R2 la pide). */
@@ -272,7 +273,11 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!Object.hasOwn(FORMATS, format)) return json({ error: "formato no válido" }, 400);
     const index = Math.max(0, Number(url.searchParams.get("ad")) || 0);
     const meta = new MetaReader(env.META_TOKEN_READ, env.META_ACCOUNT_ID);
-    return json(await preview(env.DB, meta, env, JSON.parse(row.payload) as Action, index, format as Format, row.state));
+    // Una foto que el ejecutor todavía no subió, Meta la baja de aquí mismo (15 min).
+    const sign = env.MEDIA_SIGNING_KEY
+      ? (key: string) => signedMediaUrl(`${url.origin}${base}`, key, env.MEDIA_SIGNING_KEY ?? "", 900)
+      : undefined;
+    return json(await preview(env.DB, meta, env, JSON.parse(row.payload) as Action, index, format as Format, row.state, sign));
   }
 
   // El recorte de la foto de un anuncio para un sitio de Instagram, hecho en

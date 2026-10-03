@@ -16,7 +16,7 @@
 
 import type { Action, AdCopy, Audience, AudienceKind, Limits, Objective, Placement } from "../shared/actions.ts";
 import { AUDIENCE_KINDS, audienceTag, objectiveFromMeta, regionName, validate } from "../shared/actions.ts";
-import { NO_ENHANCEMENTS, creativeOf, destinationOf, type ReadyMedia } from "../shared/creative.ts";
+import { NO_ENHANCEMENTS, creativeOf, destinationOf, type ImageRef, type ReadyMedia } from "../shared/creative.ts";
 import { GRAPH, limitsOf, type MetaVars } from "../shared/env.ts";
 
 export type MediaInfo = {
@@ -239,13 +239,14 @@ async function createAd(
       media = { kind: "video", ...(await videoReady(ctx, copy.mediaKey, info)) };
     } else {
       // Los recortes por sitio que el dueño hizo en la vista previa.
-      const placements: Partial<Record<Placement, string>> = {};
+      const placements: Partial<Record<Placement, ImageRef>> = {};
       for (const [p, key] of Object.entries(copy.placements ?? {}) as [Placement, string][]) {
         const crop = await ctx.media(key);
         if (!crop || crop.kind !== "image") throw new MetaError(`el recorte para ${p} ya no está en el panel`);
-        placements[p] = await imageHash(ctx, key, crop);
+        placements[p] = { hash: await imageHash(ctx, key, crop) };
       }
-      media = { kind: "image", hash: await imageHash(ctx, copy.mediaKey, info), ...(copy.placements ? { placements } : {}) };
+      // El anuncio de verdad va siempre con hash, nunca por dirección.
+      media = { kind: "image", image: { hash: await imageHash(ctx, copy.mediaKey, info) }, ...(copy.placements ? { placements } : {}) };
     }
   }
   // La misma función que dibuja la vista previa en el panel (shared/creative.ts).

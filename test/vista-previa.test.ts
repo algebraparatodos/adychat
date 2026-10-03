@@ -139,7 +139,7 @@ test("presubida: si Meta rechaza un archivo, queda el motivo y no se reintenta c
   assert.match(String(r.body["error"]), /Meta no aceptó este archivo: .*demasiado pequeña/);
 });
 
-test("vista previa: espera a que la foto esté en Meta y después sólo LEE", async () => {
+test("vista previa: sin esperar al ejecutor (foto por dirección firmada), después por hash, y siempre sólo LEE", async () => {
   const { DB, panelEnv, cookie, code, img } = await (async () => {
     const s = await setup();
     const cookie = await login(s.panelEnv);
@@ -154,12 +154,19 @@ test("vista previa: espera a que la foto esté en Meta y después sólo LEE", as
   assert.deepEqual(card?.previews, ["Pies de gato talla 42"]);
   assert.equal(card?.payload, undefined, "la tarjeta no le manda la acción entera a la página");
 
-  // Todavía sin subir: espera, sin preguntarle nada a Meta.
-  const none = stubFetch(() => {
-    throw new Error("preguntó a Meta antes de tener la foto");
-  });
-  assert.ok((await getPreview(panelEnv, cookie, code)).body["wait"]);
-  none.restore();
+  // Todavía sin subir: Meta la baja del panel con una dirección firmada que
+  // el propio panel entrega (y una dirección sin firma, no).
+  const early = stubFetch(() => ({ data: [{ body: `<iframe src="${FRAME}" width="320" height="525"></iframe>` }] }));
+  assert.ok((await getPreview(panelEnv, cookie, code)).body["src"]);
+  early.restore();
+  const picture = (JSON.parse(new URL(early.calls[0]!.url).searchParams.get("creative") ?? "{}") as { object_story_spec: { link_data: Record<string, string> } })
+    .object_story_spec.link_data;
+  assert.equal(picture["image_hash"], undefined);
+  const signed = new URL(picture["picture"] ?? "");
+  assert.equal(signed.pathname, `/media/${img}`);
+  assert.equal((await panel.fetch(new Request(signed), panelEnv)).status, 200, "la dirección firmada sirve la foto");
+  signed.searchParams.set("sig", "0".repeat(64));
+  assert.equal((await panel.fetch(new Request(signed), panelEnv)).status, 403, "y sin la firma buena, no");
 
   await DB.prepare(`update media set meta_hash = 'hash-bolsa' where key = ?`).bind(img).run();
   const meta = stubFetch((c: Call) => {
@@ -170,8 +177,9 @@ test("vista previa: espera a que la foto esté en Meta y después sólo LEE", as
   meta.restore();
   assert.deepEqual(ok.body, {
     src: FRAME.replace("&amp;", "&"),
+    // Lo que mide de verdad Historias, no lo que declara Meta.
     width: 320,
-    height: 525,
+    height: 567,
     // Una foto de un anuncio a la web, sin confirmar: se puede recortar.
     crop: { allowed: true, original: img, current: null },
   });
@@ -259,7 +267,8 @@ test("vista previa de un vídeo: espera mientras Meta lo procesa y después usa 
   ready = true;
   const r = await getPreview(panelEnv, cookie, code, "format=reels");
   meta.restore();
-  assert.equal(r.body["width"], 274);
+  // Meta declara 274 × 213 para Reels, pero lo que dibuja mide 320 × 624.
+  assert.deepEqual([r.body["width"], r.body["height"]], [320, 624]);
   assert.ok(meta.calls.every((c) => c.method === "GET"));
   const creative = JSON.parse(new URL(meta.calls.at(-1)!.url).searchParams.get("creative") ?? "{}") as { object_story_spec: { video_data: Record<string, unknown> } };
   assert.equal(creative.object_story_spec.video_data["video_id"], "777000000009");
@@ -371,12 +380,14 @@ test("recorte por sitio: la vista previa pide a Meta la foto de cada sitio, y es
   const code = await propose(DB, campaign({ mediaKey: img, headline: "Pies de gato", primaryText: "Agarre seco.", cta: "SHOP_NOW", path: "/" }));
   await saveCrop(panelEnv, cookie, code, { ad: 0, placement: "story", key: crop });
 
-  // El recorte todavía no está en Meta: espera, sin preguntarle nada.
-  const none = stubFetch(() => {
-    throw new Error("preguntó a Meta antes de tener el recorte");
-  });
-  assert.match(String((await getPreview(panelEnv, cookie, code, "format=story")).body["wait"]), /recorte/);
-  none.restore();
+  // El recorte todavía no está en Meta: la vista previa no espera al
+  // ejecutor, se lo pasa a Meta por dirección firmada.
+  const early = stubFetch(() => ({ data: [{ body: `<iframe src="${FRAME}" width="320" height="567"></iframe>` }] }));
+  assert.ok((await getPreview(panelEnv, cookie, code, "format=story")).body["src"]);
+  early.restore();
+  const firstImages = (JSON.parse(new URL(early.calls[0]!.url).searchParams.get("creative") ?? "{}") as { asset_feed_spec: { images: Record<string, unknown>[] } })
+    .asset_feed_spec.images;
+  assert.match(String(firstImages.find((i) => "url" in i)?.["url"]), new RegExp(`/media/${crop}\\?exp=\\d+&sig=[0-9a-f]{64}$`));
 
   await DB.prepare(`update media set meta_hash = 'hash-historias' where key = ?`).bind(crop).run();
   const meta = stubFetch(() => ({ data: [{ body: `<iframe src="${FRAME}" width="320" height="567"></iframe>` }] }));
