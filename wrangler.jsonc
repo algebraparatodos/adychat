@@ -1,0 +1,82 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "adychat-panel",
+  "main": "src/panel/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // The half with an address on the internet: the chat, the cards, the
+  // results. It holds a Meta token that can only READ and the OpenAI key.
+  // It cannot write to Meta: what the owner confirms is stored in the
+  // database and applied by the executor (wrangler.executor.jsonc).
+  //
+  // This file is a template and stays full of placeholders on purpose:
+  // the repository is public. Copy it to wrangler.local.jsonc (gitignored),
+  // fill that one in and deploy with `npm run deploy`. To serve the panel
+  // under your own domain, add a route there, for example
+  //   "routes": [{ "pattern": "example.com/panel*", "zone_name": "example.com" }]
+  // and set BASE_PATH to "/panel".
+  "workers_dev": true,
+  "observability": { "enabled": true },
+
+  "d1_databases": [
+    // Shared with the executor: it is the only channel between the two.
+    { "binding": "DB", "database_name": "adychat", "database_id": "REPLACE_ME" }
+  ],
+  // Photos and videos in Workers KV: free and no card needed (R2 asks for one).
+  "kv_namespaces": [{ "binding": "IMAGES", "id": "REPLACE_ME" }],
+
+  "vars": {
+    // The advertiser's Meta assets. Ids are not secrets, but they identify
+    // somebody's account. Until they are filled in, the panel says what is
+    // missing and the executor writes nothing.
+    "META_ACCOUNT_ID": "REPLACE_ME",          // act_ followed by digits
+    "META_PAGE_ID": "REPLACE_ME",
+    "META_IG_USER_ID": "REPLACE_ME",
+    "META_IG_USERNAME": "REPLACE_ME",         // without the @
+    "META_PIXEL_ID": "REPLACE_ME",
+    "SITE_URL": "REPLACE_ME",                 // https://example.com, no trailing slash
+    // EU Digital Services Act: every ad set says who advertises and who
+    // pays. Meta rejects ad sets shown in the EU without them.
+    "META_DSA_BENEFICIARY": "REPLACE_ME",
+    "META_DSA_PAYOR": "REPLACE_ME",
+
+    // The business. BRAND_NAME goes into the audiences the panel creates,
+    // the page title and the assistant's instructions. COUNTRY is the only
+    // country it sells in (ISO code, for example ES): no audience leaves it.
+    "BRAND_NAME": "REPLACE_ME",
+    "COUNTRY": "REPLACE_ME",
+    "TIME_ZONE": "Europe/Madrid",
+    // Fixed facts the assistant always knows: what it sells, prices, where,
+    // what the pixel measures. The owner adds the rest in "Conocimiento".
+    "BUSINESS_FACTS": "REPLACE_ME",
+    // Optional: what the ad copy should talk about.
+    "COPY_HINTS": "",
+
+    // Shown in the panel and used to reject early. The caps that actually
+    // rule are the executor's (wrangler.executor.jsonc).
+    "MAX_ADSET_DAILY_EUR": "REPLACE_ME",
+    "MAX_ACCOUNT_DAILY_EUR": "REPLACE_ME",
+    // Ceiling on what the assistant can spend on OpenAI, checked before
+    // every call. A runaway loop stops itself instead of showing up on the bill.
+    "AI_DAILY_EUR": "1",
+    "AI_MONTHLY_EUR": "10",
+
+    "PANEL_USER": "REPLACE_ME",
+    "BASE_PATH": ""
+  }
+
+  // Secrets (wrangler secret put -c wrangler.local.jsonc NAME):
+  //   PANEL_PASSWORD_HASH  npm run hash (reads the password from stdin)
+  //   TOTP_KEY             any long random string. Encrypts the two step
+  //                        secret in the database: changing it resets 2FA.
+  //   META_TOKEN_READ      a token whose user can only VIEW the ad account.
+  //                        Meta forces ads_management into every token of
+  //                        some apps, so check what matters: ask Meta to
+  //                        create a campaign with validate_only and expect
+  //                        "Permissions error". See README.
+  //   OPENAI_API_KEY       the advertiser's own OpenAI key
+  //   MEDIA_SIGNING_KEY    any long random string, the SAME in both Workers
+  //   PANEL_EXTRA_USERS    optional, JSON {"user": "<hash>"}: extra logins
+  //                        that do NOT get two step verification
+}

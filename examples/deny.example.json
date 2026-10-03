@@ -1,0 +1,12 @@
+{
+  "_comment": [
+    "Copy to ../deny.local.json (gitignored). The names and ids of the real",
+    "installation: none of them may appear anywhere in the repository.",
+    "A string matches anywhere, ignoring case. {\"word\": ...} matches only",
+    "as a whole word, for short names that are also pieces of other words.",
+    "\"src\" applies only under src/: words that are fine in a test fixture",
+    "but mean the core still talks about one particular business."
+  ],
+  "everywhere": ["acme surf shop", "alice", { "word": "acme" }, "act_ followed by the real account digits"],
+  "src": ["surfboard", "lisbon"]
+}

@@ -1,0 +1,38 @@
+{
+  "name": "adychat",
+  "version": "0.1.0",
+  "description": "Create and manage Meta Ads campaigns by chatting with an AI. Spend caps the AI cannot override, and every campaign is born paused.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test --experimental-sqlite",
+    "typecheck": "tsc --noEmit",
+    "check-clean": "node tools/check-clean.mjs",
+    "sync": "node tools/sync-from-panel.mjs",
+    "deploy": "wrangler deploy -c wrangler.local.jsonc",
+    "deploy:executor": "wrangler deploy -c wrangler.executor.local.jsonc",
+    "db:remote": "wrangler d1 execute adychat -c wrangler.local.jsonc --remote --file schema.sql",
+    "hash": "node tools/hash-password.ts"
+  },
+  "keywords": [
+    "meta-ads",
+    "instagram-ads",
+    "facebook-marketing-api",
+    "cloudflare-workers",
+    "human-in-the-loop",
+    "llm-agent"
+  ],
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260917.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "qrcode-generator": "^2.0.4"
+  }
+}
