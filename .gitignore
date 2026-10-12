@@ -22,3 +22,6 @@ sync.local.mjs
 deny.local.json
 .sync-state.local.json
 .sync-staging/
+
+# La memoria de Claude sobre este proyecto: nunca al repo.
+memoria/
