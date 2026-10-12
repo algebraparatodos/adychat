@@ -25,3 +25,4 @@ deny.local.json
 
 # La memoria de Claude sobre este proyecto: nunca al repo.
 memoria/
+LEEME.md
