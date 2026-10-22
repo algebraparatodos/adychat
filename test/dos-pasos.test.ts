@@ -112,11 +112,11 @@ test("Admin entra sin dos pasos; al dueño se le siguen exigiendo, y activarlos 
   assert.equal((await asAdmin("clave-de-prueba")).status, 401, "con la contraseña del dueño no entra");
   const j = cookieOf(await asAdmin("clave-de-admin"));
   assert.equal((await panel.fetch(req("/api/state", { cookie: j }), e)).status, 200, "Admin usa el panel sin activar nada");
-  // Una sesión vieja sin usuario era del dueño: queda frenada.
+  // Una sesión sin usuario (la escribía una versión vieja del panel) no vale.
   await e.DB.prepare(`insert into sessions (token_hash, expires_at) values (?, datetime('now', '+1 day'))`)
     .bind(await (await import("../src/panel/auth.ts")).sha256("vieja"))
     .run();
-  assert.equal((await panel.fetch(req("/api/state", { cookie: "sp_session=vieja" }), e)).status, 403);
+  assert.equal((await panel.fetch(req("/api/state", { cookie: "sp_session=vieja" }), e)).status, 401);
 
   const m = cookieOf(await login(e));
   assert.equal((await panel.fetch(req("/api/state", { cookie: m }), e)).status, 403, "el dueño sigue obligado");
@@ -127,4 +127,34 @@ test("Admin entra sin dos pasos; al dueño se le siguen exigiendo, y activarlos 
   assert.equal((await panel.fetch(req("/api/state", { cookie: "sp_session=vieja" }), e)).status, 401, "la vieja del dueño se cerró");
   // Con los dos pasos del dueño activados, Admin sigue entrando sin código.
   assert.equal((await asAdmin("clave-de-admin")).status, 200);
+});
+
+test("activados, cada ruta exige una sesión que dio el código; una abierta sin él (versión vieja) se cierra", async () => {
+  const e = await env();
+  const first = cookieOf(await login(e));
+  const { secret } = (await (await panel.fetch(req("/api/2fa/setup", { cookie: first }), e)).json()) as { secret: string };
+  const s = secret.replace(/ /g, "");
+  const now = counterAt(Date.now());
+  await panel.fetch(req("/api/2fa/enable", { method: "POST", body: JSON.stringify({ code: await hotp(s, now) }), cookie: first }), e);
+  // La que activó los dos pasos dio el código: sigue dentro.
+  assert.equal((await panel.fetch(req("/api/state", { cookie: first }), e)).status, 200);
+
+  // Lo que escribía un panel de antes de los dos pasos: usuario y contraseña, sin código.
+  const { sha256 } = await import("../src/panel/auth.ts");
+  for (const [token, user] of [["sin-codigo", "owner"], ["sin-usuario", null]] as const) {
+    await e.DB.prepare(`insert into sessions (token_hash, expires_at, user) values (?, datetime('now', '+1 day'), ?)`)
+      .bind(await sha256(token), user)
+      .run();
+    for (const path of ["/api/state", "/api/chats", "/api/knowledge", "/api/overview", "/api/actions/ABC123"]) {
+      const r = await panel.fetch(req(path, { cookie: `sp_session=${token}` }), e);
+      assert.equal(r.status, 401, `${token} ${path}`);
+    }
+  }
+  // Y la sesión sin código queda borrada, no sólo frenada.
+  const left = await e.DB.prepare(`select count(*) as n from sessions where token_hash = ?`).bind(await sha256("sin-codigo")).first<{ n: number }>();
+  assert.equal(left?.n, 0);
+
+  // Entrar con el código da una sesión que sí vale.
+  const ok = await login(e, await hotp(s, now + 1));
+  assert.equal((await panel.fetch(req("/api/state", { cookie: cookieOf(ok) }), e)).status, 200);
 });

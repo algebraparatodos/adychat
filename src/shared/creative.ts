@@ -214,20 +214,29 @@ function byPlacement(
     seen.places.push(p);
     labels.set(id, seen);
   }
+  // El texto, el titular, la descripción y el enlace son los mismos en los
+  // tres sitios, pero también llevan etiqueta y cada regla los nombra: si
+  // la regla sólo nombra la foto, Meta dibuja Feed y Reels SIN texto
+  // (probado con generatepreviews el 03/10/2026).
+  const everywhere = PLACEMENTS.map((name) => ({ name }));
   return {
     object_story_spec: { page_id: vars.META_PAGE_ID, instagram_user_id: vars.META_IG_USER_ID },
     asset_feed_spec: {
       images: [...labels.values()].map(({ ref, places }) => ({ ...ref, adlabels: places.map((name) => ({ name })) })),
-      bodies: [{ text: copy.primaryText }],
-      titles: [{ text: copy.headline }],
-      ...(copy.description ? { descriptions: [{ text: copy.description }] } : {}),
-      link_urls: [{ website_url: dest.link }],
+      bodies: [{ text: copy.primaryText, adlabels: everywhere }],
+      titles: [{ text: copy.headline, adlabels: everywhere }],
+      ...(copy.description ? { descriptions: [{ text: copy.description, adlabels: everywhere }] } : {}),
+      link_urls: [{ website_url: dest.link, adlabels: everywhere }],
       call_to_action_types: [dest.cta],
       ad_formats: ["SINGLE_IMAGE"],
       optimization_type: "PLACEMENT",
       asset_customization_rules: PLACEMENTS.map((p, i) => ({
         customization_spec: { publisher_platforms: ["instagram"], instagram_positions: POSITIONS[p] },
         image_label: { name: p },
+        body_label: { name: p },
+        title_label: { name: p },
+        ...(copy.description ? { description_label: { name: p } } : {}),
+        link_url_label: { name: p },
         priority: i + 1,
       })),
     },

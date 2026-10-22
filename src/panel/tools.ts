@@ -9,7 +9,7 @@
  *   «Confirmar» la pasa al ejecutor.
  */
 
-import { AUDIENCE_KINDS, CTAS, OBJECTIVES, regionName, validate, type Action, type AdCopy, type Audience, type AudienceKind } from "../shared/actions.ts";
+import { AUDIENCE_KINDS, CTAS, OBJECTIVES, regionName, validate, type Action, type AdCopy, type Audience, type AudienceKind, type Level } from "../shared/actions.ts";
 import { describe } from "../shared/actions.ts";
 import { limitsOf, type MetaVars } from "../shared/env.ts";
 import {
@@ -24,6 +24,7 @@ import {
   structure,
 } from "./meta-read.ts";
 import { listDrafts, type MediaEnv } from "./media.ts";
+import { mismatch, whatIs } from "../shared/objects.ts";
 
 export type ToolEnv = MetaVars & { DB: D1Database; META_TOKEN_READ: string };
 
@@ -286,6 +287,22 @@ async function autoExclude(env: ToolEnv, action: Action): Promise<void> {
   action.audience.exclude = next;
 }
 
+/** El objeto de Meta que toca una acción sobre algo que ya existe, y qué tiene que ser. */
+function targetOf(action: Action): { id: string; level: Level } | null {
+  switch (action.type) {
+    case "set_status":
+      return { id: action.id, level: action.level };
+    case "set_budget":
+    case "set_audience":
+    case "add_ad":
+      return { id: action.adSetId, level: "adset" };
+    case "update_ad_copy":
+      return { id: action.adId, level: "ad" };
+    default:
+      return null;
+  }
+}
+
 async function propose(env: ToolEnv, type: Action["type"], args: Record<string, unknown>, chatId: number): Promise<unknown> {
   const action = { ...args, type } as Action;
   if (action.type === "create_campaign" || action.type === "set_audience") {
@@ -321,6 +338,23 @@ async function propose(env: ToolEnv, type: Action["type"], args: Record<string, 
     const cities = ((action.audience as Audience).cities ?? []).map((c) => c.key);
     const abroad = await citiesOutsideCountry(new MetaReader(env.META_TOKEN_READ, env.META_ACCOUNT_ID), cities, env.COUNTRY);
     if (abroad.length > 0) errors.push(`el negocio sólo vende en ${regionName(env.COUNTRY)} y esto no lo es: ${abroad.join(", ")}. Busca la zona otra vez con buscar_zona.`);
+  }
+  // El id, el nivel y el nombre los escribió el modelo: se le pregunta a Meta
+  // qué es de verdad. La tarjeta lleva el nombre y el presupuesto de Meta;
+  // el ejecutor lo vuelve a comprobar al aplicar (22/10/2026).
+  const target = targetOf(action);
+  if (target && errors.length === 0) {
+    if (!env.META_TOKEN_READ || !env.META_ACCOUNT_ID) errors.push("la cuenta de Meta todavía no está conectada al panel");
+    else {
+      const meta = new MetaReader(env.META_TOKEN_READ, env.META_ACCOUNT_ID);
+      const obj = await whatIs((path, params) => meta.get(path, params), env.META_ACCOUNT_ID, target.id);
+      const wrong = mismatch(obj, target.id, target.level);
+      if (wrong || !obj) errors.push(`${wrong ?? "no está en la cuenta"}; mira ver_campanas`);
+      else {
+        (action as { name: string }).name = obj.name;
+        if (action.type === "set_status" || action.type === "set_budget") action.seen = { dailyEur: obj.dailyEur, status: obj.status };
+      }
+    }
   }
   if (errors.length > 0) return { error: "no se puede proponer así", problemas: errors };
 

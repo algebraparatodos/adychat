@@ -13,8 +13,9 @@ test("el JavaScript de la página se puede leer entero", () => {
   assert.doesNotThrow(() => new Function(js));
 });
 
-test("la página trae las cuatro secciones del menú", () => {
-  for (const v of ["chat", "results", "leads", "knowledge"]) assert.match(PAGE, new RegExp(`data-view="${v}"`));
+test("la página trae las cinco secciones del menú", () => {
+  for (const v of ["chat", "created", "results", "leads", "knowledge"]) assert.match(PAGE, new RegExp(`data-view="${v}"`));
+  assert.match(PAGE, />\s*Campañas creadas<\/button>/);
   assert.match(PAGE, />\s*Contactos<\/button>/);
   assert.match(PAGE, />\s*Crear campañas<\/button>/);
   assert.match(PAGE, />\s*Conocimiento<\/button>/);

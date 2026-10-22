@@ -1,6 +1,6 @@
 # Pendientes
 
-## Ventana de espera con el logo, de fábrica (Juani, 21/10/2026)
+## Ventana de espera con el logo, de fábrica (21/10/2026)
 
 - [ ] Que toda instalación nueva de esta herramienta traiga la ventana de
   espera: si una acción o un cambio de pantalla tarda más de 350 ms,

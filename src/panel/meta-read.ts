@@ -4,7 +4,7 @@
  * internet, y `test/boundary.test.ts` falla si alguien le añade un POST.
  */
 
-import { AUDIENCE_KINDS, audienceTag, objectiveFromMeta, type AudienceKind, type Objective } from "../shared/actions.ts";
+import { AUDIENCE_KINDS, OBJECTIVE_ES, audienceTag, objectiveFromMeta, type AudienceKind, type Objective } from "../shared/actions.ts";
 import { GRAPH } from "../shared/env.ts";
 
 export class MetaReader {
@@ -165,6 +165,15 @@ type AdSet = {
   daily_budget?: string;
   targeting?: Record<string, unknown>;
 };
+type Creative = {
+  thumbnail_url?: string;
+  object_story_spec?: {
+    link_data?: { name?: string; message?: string; link?: string };
+    video_data?: { title?: string; message?: string; call_to_action?: { value?: { link?: string } } };
+  };
+  asset_feed_spec?: { titles?: { text?: string }[]; bodies?: { text?: string }[]; link_urls?: { website_url?: string }[] };
+  source_instagram_media_id?: string;
+};
 type Ad = {
   id: string;
   name: string;
@@ -172,11 +181,31 @@ type Ad = {
   effective_status: string;
   adset_id: string;
   ad_review_feedback?: Record<string, unknown>;
-  creative?: { object_story_spec?: { link_data?: { name?: string; message?: string; link?: string } } };
+  creative?: Creative;
 };
 
+/**
+ * El titular, el texto y el enlace de un anuncio, salga de donde salga: foto
+ * (link_data), vídeo (video_data) o una foto por sitio (asset_feed_spec). Antes
+ * sólo se leía la foto y los otros quedaban sin texto.
+ */
+export function adCopy(cr: Creative | undefined): { titular?: string; texto?: string; enlace?: string; publicacion_de_instagram?: boolean } {
+  const ld = cr?.object_story_spec?.link_data;
+  const vd = cr?.object_story_spec?.video_data;
+  const af = cr?.asset_feed_spec;
+  const out: { titular?: string; texto?: string; enlace?: string; publicacion_de_instagram?: boolean } = {};
+  const titular = ld?.name ?? vd?.title ?? af?.titles?.[0]?.text;
+  const texto = ld?.message ?? vd?.message ?? af?.bodies?.[0]?.text;
+  const enlace = ld?.link ?? vd?.call_to_action?.value?.link ?? af?.link_urls?.[0]?.website_url;
+  if (titular) out.titular = titular;
+  if (texto) out.texto = texto;
+  if (enlace) out.enlace = enlace;
+  if (cr?.source_instagram_media_id) out.publicacion_de_instagram = true;
+  return out;
+}
+
 /** Campañas → conjuntos → anuncios, con lo que el dueño necesita ver. */
-export async function structure(meta: MetaReader): Promise<unknown[]> {
+export async function structure(meta: MetaReader, forScreen = false): Promise<unknown[]> {
   const filter = { effective_status: ALL_STATUSES };
   const [campaigns, adsets, ads] = await Promise.all([
     meta.list<Campaign>(`${meta.account}/campaigns`, { fields: "id,name,status,effective_status,created_time,objective", ...filter }),
@@ -185,7 +214,7 @@ export async function structure(meta: MetaReader): Promise<unknown[]> {
       ...filter,
     }),
     meta.list<Ad>(`${meta.account}/ads`, {
-      fields: "id,name,status,effective_status,adset_id,ad_review_feedback,creative{object_story_spec}",
+      fields: "id,name,status,effective_status,adset_id,ad_review_feedback,creative{object_story_spec,asset_feed_spec,source_instagram_media_id,thumbnail_url}",
       ...filter,
     }),
   ]);
@@ -204,6 +233,8 @@ export async function structure(meta: MetaReader): Promise<unknown[]> {
         estado_real: s.effective_status,
         presupuesto_diario_eur: s.daily_budget ? Number(s.daily_budget) / 100 : null,
         objetivo: objectiveFromMeta(c.objective, s.destination_type, s.optimization_goal) ?? c.objective ?? null,
+        // Para la pantalla «Campañas creadas»; el modelo no lo necesita.
+        ...(forScreen ? { objetivo_es: objectiveLabel(c.objective, s) } : {}),
         segmentacion: summarizeTargeting(s.targeting ?? {}),
         anuncios: ads
           .filter((a) => a.adset_id === s.id)
@@ -212,13 +243,17 @@ export async function structure(meta: MetaReader): Promise<unknown[]> {
             nombre: a.name,
             estado: a.status,
             estado_real: a.effective_status,
-            titular: a.creative?.object_story_spec?.link_data?.name,
-            texto: a.creative?.object_story_spec?.link_data?.message,
-            enlace: a.creative?.object_story_spec?.link_data?.link,
+            ...adCopy(a.creative),
+            ...(forScreen && a.creative?.thumbnail_url ? { miniatura: a.creative.thumbnail_url } : {}),
             ...(a.ad_review_feedback ? { rechazo: a.ad_review_feedback } : {}),
           })),
       })),
   }));
+}
+
+function objectiveLabel(campaignObjective: string | undefined, s: AdSet): string | null {
+  const o = objectiveFromMeta(campaignObjective, s.destination_type, s.optimization_goal);
+  return o ? OBJECTIVE_ES[o] : (campaignObjective ?? null);
 }
 
 function summarizeTargeting(t: Record<string, unknown>): Record<string, unknown> {

@@ -144,6 +144,13 @@ export type AdCopy = {
   placements?: Partial<Record<Placement, string>>;
 };
 
+/**
+ * Lo que dijo Meta del objeto al proponer (22/10/2026): la tarjeta que
+ * confirma el dueño enseña esto y el nombre de Meta, no lo que escribió el
+ * modelo. `dailyEur`: lo que puede gastar al día; null, presupuesto total.
+ */
+export type Seen = { dailyEur: number | null; status: string };
+
 export type Action =
   | {
       type: "create_campaign";
@@ -155,8 +162,8 @@ export type Action =
       ads: AdCopy[];
     }
   | { type: "create_audience"; kind: AudienceKind }
-  | { type: "set_status"; level: Level; id: string; name: string; status: "ACTIVE" | "PAUSED" }
-  | { type: "set_budget"; adSetId: string; name: string; dailyBudgetEur: number }
+  | { type: "set_status"; level: Level; id: string; name: string; status: "ACTIVE" | "PAUSED"; seen?: Seen }
+  | { type: "set_budget"; adSetId: string; name: string; dailyBudgetEur: number; seen?: Seen }
   | { type: "set_audience"; adSetId: string; name: string; audience: Audience }
   | {
       type: "add_ad";
@@ -296,7 +303,7 @@ export function validate(action: Action, limits: Limits): string[] {
 }
 
 const LEVEL: Record<Level, string> = { campaign: "la campaña", adset: "el conjunto", ad: "el anuncio" };
-const CTA_ES: Record<Cta, string> = {
+export const CTA_ES: Record<Cta, string> = {
   SHOP_NOW: "Comprar",
   BUY_NOW: "Comprar ya",
   ORDER_NOW: "Pedir ahora",
@@ -307,7 +314,7 @@ const CTA_ES: Record<Cta, string> = {
   APPLY_NOW: "Solicitar",
 };
 
-const OBJECTIVE_ES: Record<Objective, string> = {
+export const OBJECTIVE_ES: Record<Objective, string> = {
   sales: "Ventas (busca compradores)",
   awareness: "Reconocimiento (llegar a más gente)",
   traffic: "Tráfico (visitas a la web)",
@@ -369,6 +376,13 @@ function describeCopy(c: AdCopy, objective: Objective, n?: number): string[] {
 }
 
 /** Lo que se ve en la tarjeta: un título y el detalle, en castellano llano. */
+function seenBudget(seen: Seen, level: Level): string {
+  if (seen.dailyEur === null) return "Tiene presupuesto total, no diario.";
+  return level === "ad"
+    ? `Su conjunto puede gastar ${eur(seen.dailyEur)} al día.`
+    : `Puede gastar ${eur(seen.dailyEur)} al día.`;
+}
+
 export function describe(action: Action): { title: string; lines: string[] } {
   switch (action.type) {
     case "create_campaign":
@@ -395,12 +409,18 @@ export function describe(action: Action): { title: string; lines: string[] } {
     case "set_status":
       return {
         title: `${action.status === "ACTIVE" ? "Encender" : "Pausar"} ${LEVEL[action.level]} «${action.name}»`,
-        lines: action.status === "ACTIVE" ? ["Empieza a gastar en cuanto Meta lo apruebe."] : ["Deja de gastar en unos minutos."],
+        lines: [
+          ...(action.seen ? [seenBudget(action.seen, action.level)] : []),
+          action.status === "ACTIVE" ? "Empieza a gastar en cuanto Meta lo apruebe." : "Deja de gastar en unos minutos.",
+        ],
       };
     case "set_budget":
       return {
         title: `Presupuesto de «${action.name}»`,
-        lines: [`Pasa a ${eur(action.dailyBudgetEur)} al día.`],
+        lines: [
+          ...(action.seen ? [`Ahora: ${action.seen.dailyEur === null ? "presupuesto total, no diario" : `${eur(action.seen.dailyEur)} al día`}.`] : []),
+          `Pasa a ${eur(action.dailyBudgetEur)} al día.`,
+        ],
       };
     case "set_audience":
       return { title: `Cambiar el público de «${action.name}»`, lines: describeAudience(action.audience) };

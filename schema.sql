@@ -4,7 +4,8 @@
 
 create table if not exists sessions (
   token_hash text primary key,
-  user text,                    -- quién entró, en minúsculas (null: sesión vieja, del dueño)
+  user text,                    -- quién entró, en minúsculas (null: sesión vieja, no vale)
+  two_factor integer not null default 0, -- 1: al entrar dio el código de la app
   created_at text not null default (datetime('now')),
   expires_at text not null
 );

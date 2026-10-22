@@ -9,7 +9,7 @@ import panel from "../src/panel/index.ts";
 import { run } from "../src/executor/index.ts";
 import { hashPassword } from "../src/panel/auth.ts";
 import { counterAt, hotp } from "../src/panel/twofactor.ts";
-import { META_VARS, fakeD1, fakeKV, stubFetch, type Call } from "./fakes.ts";
+import { META_VARS, accountObjects, fakeD1, fakeKV, stubFetch, type Call } from "./fakes.ts";
 
 const ORIGIN = "https://panel.test";
 
@@ -271,6 +271,9 @@ test("encender algo que pasa el tope de la cuenta no llega a Meta", async () => 
   // Ya hay 25 € encendidos; la campaña nueva suma 10 y el tope es 30.
   const meta = stubFetch((c: Call) => {
     if (c.method === "POST") throw new Error("intentó escribir pasando el tope");
+    const known = accountObjects(c, { campaigns: [{ id: "120000000000001", name: "Nueva", status: "PAUSED" }] });
+    if (known) return known;
+    if (new URL(c.url).pathname.endsWith("/120000000000001/adsets")) return { data: [] };
     return {
       data: [
         { id: "1", status: "ACTIVE", daily_budget: "2500", campaign: { id: "120000000000009", status: "ACTIVE" } },
@@ -555,4 +558,94 @@ test("El negocio sólo vende en su país: ni el panel ni el ejecutor dejan pasar
   assert.equal(row?.state, "failed");
   assert.match(row?.error ?? "", /sólo vende en España.*Gava/);
   assert.ok(meta.calls.every((c) => c.method !== "POST"), "no escribió nada en Meta");
+});
+
+test("el tope de la cuenta no se salta diciendo «anuncio» con el id de una campaña", async () => {
+  const { DB, executorEnv } = await setup();
+  // El modelo dice que es un anuncio y lo llama «Anuncio viejo»; es una campaña de 15 €.
+  const action = { type: "set_status", level: "ad", id: "120000000000001", name: "Anuncio viejo", status: "ACTIVE" };
+  await DB.prepare(`insert into actions (code, type, title, lines, payload, state) values ('NIVEL1', 'set_status', 't', '[]', ?, 'confirmed')`)
+    .bind(JSON.stringify(action))
+    .run();
+  const meta = stubFetch((c: Call) => {
+    if (c.method === "POST") throw new Error("encendió la campaña");
+    const known = accountObjects(c, { campaigns: [{ id: "120000000000001", name: "Rocódromos", status: "PAUSED" }] });
+    if (known) return known;
+    if (new URL(c.url).pathname.endsWith("/120000000000001/adsets")) return { data: [{ daily_budget: "1500" }] };
+    return { data: [{ id: "1", status: "ACTIVE", daily_budget: "2500", campaign: { id: "120000000000009", status: "ACTIVE" } }] };
+  });
+  await run(executorEnv);
+  meta.restore();
+  const row = await DB.prepare(`select state, error from actions where code = 'NIVEL1'`).first<{ state: string; error: string }>();
+  assert.equal(row?.state, "failed");
+  assert.match(row?.error ?? "", /es una campaña \(«Rocódromos»\), no un anuncio/);
+  assert.ok(meta.calls.every((c) => c.method !== "POST"));
+});
+
+test("un id que no es de la cuenta configurada no se toca", async () => {
+  const { DB, executorEnv } = await setup();
+  const action = { type: "set_budget", adSetId: "120000000000077", name: "x", dailyBudgetEur: 5 };
+  await DB.prepare(`insert into actions (code, type, title, lines, payload, state) values ('AJENO1', 'set_budget', 't', '[]', ?, 'confirmed')`)
+    .bind(JSON.stringify(action))
+    .run();
+  const meta = stubFetch((c: Call) => {
+    if (c.method === "POST") throw new Error("escribió en algo ajeno");
+    const known = accountObjects(c, {});
+    if (known) return known;
+    throw new Error(`llamada inesperada: ${c.method} ${c.url}`);
+  });
+  await run(executorEnv);
+  meta.restore();
+  const row = await DB.prepare(`select state, error from actions where code = 'AJENO1'`).first<{ state: string; error: string }>();
+  assert.equal(row?.state, "failed");
+  assert.match(row?.error ?? "", /no es ninguna campaña, conjunto ni anuncio de esta cuenta/);
+});
+
+test("el tope de la cuenta vale en todos los niveles: un anuncio, y una campaña con presupuesto de campaña", async () => {
+  const { DB, executorEnv } = await setup();
+  // Ya gastan 35 €: una campaña con presupuesto de campaña (20) y un conjunto (15).
+  const on = [
+    { id: "11", status: "ACTIVE", campaign: { id: "120000000000005", status: "ACTIVE", daily_budget: "2000" } },
+    { id: "12", status: "ACTIVE", campaign: { id: "120000000000005", status: "ACTIVE", daily_budget: "2000" } },
+    { id: "13", status: "ACTIVE", daily_budget: "1500", campaign: { id: "120000000000006", status: "ACTIVE" } },
+  ];
+  await DB.prepare(`insert into actions (code, type, title, lines, payload, state) values ('ANUNC1', 'set_status', 't', '[]', ?, 'confirmed')`)
+    .bind(JSON.stringify({ type: "set_status", level: "ad", id: "120000000000020", name: "x", status: "ACTIVE" }))
+    .run();
+  const meta = stubFetch((c: Call) => {
+    if (c.method === "POST") throw new Error("encendió pasando el tope");
+    const known = accountObjects(c, { ads: [{ id: "120000000000020", name: "Pies de gato", status: "PAUSED", adset: { id: "13", daily_budget: "1500" } }] });
+    if (known) return known;
+    return { data: on };
+  });
+  await run(executorEnv);
+  meta.restore();
+  const row = await DB.prepare(`select state, error from actions where code = 'ANUNC1'`).first<{ state: string; error: string }>();
+  assert.equal(row?.state, "failed");
+  // 20 de la campaña (una vez, aunque tenga dos conjuntos) + 15.
+  assert.match(row?.error ?? "", /35\.00 € al día y el tope de la cuenta es 30/);
+});
+
+test("la tarjeta enseña el nombre y el presupuesto de Meta, no los del modelo, y no propone un nivel que no es", async () => {
+  const { DB, panelEnv } = await setup();
+  const { runTool } = await import("../src/panel/tools.ts");
+  const meta = stubFetch((c: Call) => {
+    if (c.method === "POST") throw new Error("el panel escribió en Meta");
+    const known = accountObjects(c, {
+      campaigns: [{ id: "120000000000001", name: "Rocódromos", status: "PAUSED", daily_budget: "2500" }],
+      adsets: [{ id: "120000000000002", name: "Valencia 25-45", status: "ACTIVE", daily_budget: "800", campaign: { id: "120000000000001" } }],
+    });
+    if (known) return known;
+    throw new Error(`llamada inesperada: ${c.method} ${c.url}`);
+  });
+  const proposed: string[] = [];
+  const ok = await runTool(panelEnv, "proponer_presupuesto", { adSetId: "120000000000002", name: "Prueba barata", dailyBudgetEur: 10 }, proposed, 1);
+  const bad = await runTool(panelEnv, "proponer_estado", { level: "ad", id: "120000000000001", name: "Anuncio viejo", status: "ACTIVE" }, proposed, 1);
+  meta.restore();
+  assert.ok((ok as { propuesta?: string }).propuesta, JSON.stringify(ok));
+  const row = await DB.prepare(`select title, lines from actions where code = ?`).bind(proposed[0]).first<{ title: string; lines: string }>();
+  assert.equal(row?.title, "Presupuesto de «Valencia 25-45»");
+  assert.deepEqual(JSON.parse(row?.lines ?? "[]"), ["Ahora: 8 € al día.", "Pasa a 10 € al día."]);
+  assert.match(JSON.stringify(bad), /es una campaña \(«Rocódromos»\), no un anuncio/);
+  assert.equal(proposed.length, 1);
 });

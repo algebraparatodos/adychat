@@ -182,6 +182,8 @@ test("vista previa: sin esperar al ejecutor (foto por dirección firmada), despu
     height: 567,
     // Una foto de un anuncio a la web, sin confirmar: se puede recortar.
     crop: { allowed: true, original: img, current: null },
+    // El texto entero, para leerlo al lado del recuadro.
+    copy: { headline: "Pies de gato talla 42", text: "Agarre seco.", button: "Comprar", goesTo: "example.com/" },
   });
   assert.ok(meta.calls.every((c) => c.method === "GET"), "la vista previa sólo lee");
   const asked = new URL(meta.calls[0]!.url);
@@ -407,6 +409,16 @@ test("recorte por sitio: la vista previa pide a Meta la foto de cada sitio, y es
     [["hash-original", ["feed", "reels"]], ["hash-historias", ["story"]]],
   );
   assert.equal(previewed.asset_feed_spec.asset_customization_rules.length, 3);
+  // Cada regla nombra también el texto, el titular y el enlace: si sólo
+  // nombra la foto, Meta dibuja Feed y Reels sin texto.
+  for (const rule of previewed.asset_feed_spec.asset_customization_rules as Record<string, { name: string }>[]) {
+    const place = rule["image_label"]!.name;
+    for (const k of ["body_label", "title_label", "link_url_label"]) assert.equal(rule[k]?.name, place, `${place}: ${k}`);
+  }
+  const feedSpec = previewed.asset_feed_spec as unknown as Record<string, { adlabels?: { name: string }[] }[]>;
+  for (const k of ["bodies", "titles", "link_urls"]) {
+    assert.deepEqual(feedSpec[k]![0]!.adlabels?.map((l) => l.name), ["feed", "story", "reels"], k);
+  }
 
   // El ejecutor, con la acción tal como quedó guardada, crea ese mismo creativo.
   const saved = JSON.parse((await DB.prepare(`select payload from actions where code = ?`).bind(code).first<{ payload: string }>())?.payload ?? "{}") as Action;
@@ -438,4 +450,34 @@ test("recorte por sitio: la vista previa pide a Meta la foto de cada sitio, y es
   const made = write.calls.find((c) => c.url.endsWith("/adcreatives"))?.body ?? {};
   assert.deepEqual(JSON.parse(made["asset_feed_spec"] ?? "null"), previewed.asset_feed_spec);
   assert.deepEqual(JSON.parse(made["object_story_spec"] ?? "null"), previewed.object_story_spec);
+});
+
+test("el Feed mide según la forma de la foto, sin cortar las verticales", async () => {
+  const { feedHeight } = await import("../src/panel/preview.ts");
+  // Medido en el navegador: cuadrada 534 y 2:3 (que Meta recorta a 3:4) 640.
+  assert.equal(feedHeight(1024, 1024), 534);
+  assert.equal(feedHeight(1024, 1536), 640);
+  assert.equal(feedHeight(576, 1024), 640, "más alta que 3:4: Meta la recorta a 3:4");
+  assert.equal(feedHeight(1920, 1080), 216 + Math.round((318 * 1080) / 1920));
+  assert.equal(feedHeight(3000, 1000), 216 + Math.round(318 / 1.91), "más apaisada que 1,91:1: Meta la recorta");
+  assert.equal(feedHeight(null, null), 640, "sin medidas, la más alta");
+});
+
+test("el texto del anuncio, entero, al lado de la vista previa", async () => {
+  const { copyOf, FEED_VISIBLE, feedHeight } = await import("../src/panel/preview.ts");
+  const long = "Nacido en la roca, donde cada regleta cuenta. 100 % carbonato de pies de gato, grano fino y bolsa de kraft con cierre zip para que no se te escape ni un gramo.";
+  const ad = (o: Record<string, unknown>) => ({ type: "create_campaign", name: "x", dailyBudgetEur: 5, audience: { ageMin: 18, ageMax: 50, countries: ["ES"] }, ...o }) as Action;
+  const web = copyOf(META_VARS, ad({ ads: [{ mediaKey: "a", headline: "Pies de gato", primaryText: long, description: "Envío a toda España", cta: "SHOP_NOW", path: "/en/" }] }), 0)!;
+  assert.equal(web.text, long);
+  assert.ok(web.cut! <= FEED_VISIBLE && long[web.cut!] === " ", "corta en un espacio, antes de los 125");
+  assert.deepEqual([web.button, web.goesTo, web.description], ["Comprar", "example.com/en/", "Envío a toda España"]);
+  assert.equal(copyOf(META_VARS, ad({ ads: [{ mediaKey: "a", headline: "h", primaryText: "Corto." }] }), 0)!.cut, undefined);
+  const direct = copyOf(META_VARS, ad({ objective: "messages", ads: [{ mediaKey: "a", headline: "h", primaryText: "t" }] }), 0)!;
+  assert.deepEqual([direct.button, direct.goesTo], ["Enviar mensaje", "Instagram Direct"]);
+  const post = copyOf(META_VARS, ad({ objective: "engagement", ads: [{ instagramMediaId: "18000000000000001" }] }), 0)!;
+  assert.equal(post.existingPost, true);
+  assert.equal(copyOf(META_VARS, ad({ ads: [] }), 3), undefined);
+  // Con el texto largo, el Feed deja sitio para más líneas que las 2 de base.
+  assert.ok(feedHeight(1024, 1024, long.length) > feedHeight(1024, 1024, 0));
+  assert.equal(feedHeight(1024, 1024, 20), 534, "texto corto: las 2 líneas de base");
 });

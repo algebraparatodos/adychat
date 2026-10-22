@@ -143,6 +143,25 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
 .pvm-tabs button{background:none;border:0;border-radius:999px;padding:8px 16px;font-size:15px;color:#cfc8ba}
 .pvm-tabs button[aria-selected=true]{background:#f3eee4;color:#1a1f25;font-weight:600}
 .pvm-tabs button:disabled{opacity:.45}
+.pvm-main{flex:1;min-height:0;display:flex;flex-direction:column}
+.pvm-copy{flex:none;overflow-y:auto;background:#1a1f26;border:1px solid rgba(255,255,255,.08);border-radius:12px;margin:4px 12px;padding:0 16px;max-height:40vh;font-size:14px;line-height:1.5;color:#e8e2d6}
+.pvm-copy.hidden{display:none}
+.pvm-copy summary{cursor:pointer;padding:12px 0;font-weight:600;color:#f3eee4;list-style-position:inside}
+.pvm-copy[open] summary{padding-bottom:4px}
+.pvm-copy dl{margin:0 0 14px}
+/* En ordenador, el anuncio y su texto juntos en el medio: el anuncio
+   pegado al centro por la izquierda y el texto al lado. */
+@media (min-width:760px){
+  .pvm-main{flex-direction:row}
+  .pvm-main .pvm-stage{flex:0 0 50%;justify-content:flex-end}
+  .pvm-copy{width:340px;max-height:calc(100% - 8px);align-self:center;margin:4px 16px 4px 24px}
+  .pvm-copy summary{cursor:default;pointer-events:none;list-style:none}
+  .pvm-copy summary::-webkit-details-marker{display:none}
+}
+.pvm-copy dt{color:#a9a194;font-size:12px;text-transform:uppercase;letter-spacing:.04em;margin-top:10px}
+.pvm-copy dd{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.pvm-copy .rest{color:#a9a194}
+.pvm-copy .cut{display:block;margin:6px 0;font-size:12px;color:var(--accent);border-top:1px dashed currentColor;padding-top:4px;white-space:normal}
 .pvm-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px 10px}
 .pvm-fit{position:relative;flex:none;overflow:hidden;border-radius:10px}
 .pvm-fit iframe{position:absolute;top:0;left:0;border:0;background:#fff;transform-origin:top left}
@@ -194,6 +213,30 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
 #kCount{font-size:12px;color:var(--muted)}
 #kStatus{font-size:13px;color:var(--muted);flex:1}
 #kStatus.dirty{color:var(--warn)} #kStatus.saved{color:var(--ok)} #kStatus.bad{color:var(--bad)}
+
+/* Campañas creadas */
+#created{flex:1;overflow-y:auto;padding:20px 16px}
+#created h2{font-size:22px;margin:0 0 6px}
+#created > p{margin:0 0 14px;color:var(--muted);font-size:14px}
+.cc{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:10px}
+.cc > summary{cursor:pointer;padding:12px 14px;list-style:none;display:flex;gap:10px;align-items:flex-start}
+.cc > summary::-webkit-details-marker{display:none}
+.cc > summary::before{content:"▸";color:var(--muted);flex:none;transition:transform .15s}
+.cc[open] > summary::before{transform:rotate(90deg)}
+.cc .who{flex:1;min-width:0}
+.cc h3{margin:0;font-size:15px;overflow-wrap:anywhere}
+.cc .sub{font-size:13px;color:var(--muted);margin-top:2px}
+.cc-body{padding:0 14px 12px}
+.cs{border-left:3px solid var(--line);padding:4px 0 4px 12px;margin:8px 0 12px}
+.cs h4{margin:0;font-size:14px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.cs ul{margin:6px 0 8px;padding-left:18px;font-size:13px;color:var(--muted)}
+.ca{display:flex;gap:10px;align-items:flex-start;background:var(--soft);border-radius:10px;padding:10px;margin-top:8px}
+.ca img{width:56px;height:56px;object-fit:cover;border-radius:8px;flex:none;background:var(--line)}
+.ca .what{flex:1;min-width:0;font-size:13px}
+.ca .what b{display:block;font-size:14px;overflow-wrap:anywhere}
+.ca .what p{margin:4px 0 0;color:var(--muted);overflow-wrap:anywhere}
+.ca .what .bad{color:var(--bad)}
+.ca .ghost{margin-top:8px;font-size:13px;padding:6px 10px}
 
 /* Contactos */
 #leads{flex:1;overflow-y:auto;padding:20px 16px}
@@ -292,6 +335,9 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
       <button type="button" data-view="chat" aria-current="page">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Crear campañas</button>
+      <button type="button" data-view="created">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="6" y="11" width="15" height="4" rx="1"/><rect x="9" y="18" width="12" height="3" rx="1"/></svg>
+        Campañas creadas</button>
       <button type="button" data-view="results">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="12"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="9"/></svg>
         Resultados</button>
@@ -336,6 +382,12 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
     <div id="resultsBody" class="muted">Cargando…</div>
   </div>
 
+  <div id="created" class="hidden">
+    <h2>Campañas creadas</h2>
+    <p>Lo que ya está en Meta: cada campaña con sus conjuntos de anuncios, y dentro de cada conjunto sus anuncios.</p>
+    <div id="createdBody" class="muted">Cargando…</div>
+  </div>
+
   <div id="leads" class="hidden">
     <h2>Contactos</h2>
     <p>La gente que dejó sus datos en el formulario de un anuncio. Cada contacto nuevo te llega también por correo.</p>
@@ -360,7 +412,10 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
       <button type="button" role="tab" data-f="feed">Feed</button><button type="button" role="tab" data-f="story">Historias</button><button type="button" role="tab" data-f="reels">Reels</button>
     </div>
   </div>
-  <div class="pvm-stage" id="pvStage"></div>
+  <div class="pvm-main">
+    <div class="pvm-stage" id="pvStage"></div>
+    <details class="pvm-copy hidden" id="pvCopy"></details>
+  </div>
   <div class="pvm-foot" id="pvFoot"></div>
 </div>
 <script>
@@ -464,7 +519,9 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
     $("results").classList.toggle("hidden", v !== "results");
     $("knowledge").classList.toggle("hidden", v !== "knowledge");
     $("leads").classList.toggle("hidden", v !== "leads");
+    $("created").classList.toggle("hidden", v !== "created");
     if (v === "results") loadResults(currentDays);
+    if (v === "created") loadCreated();
     if (v === "leads") loadLeads();
     if (v === "knowledge") loadKnowledge();
     openMenu(false);
@@ -621,7 +678,7 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
   // Las formas de cada sitio: el Feed admite vertical 4:5 y cuadrada.
   var ASPECTS = { feed:[[4,5,"Vertical 4:5"],[1,1,"Cuadrada"]], story:[[9,16,"9:16"]], reels:[[9,16,"9:16"]] };
   var pv = { card:null, node:null, opener:null, ad:0, fmt:"feed", seq:0, timer:null, last:null, frame:null, crop:null };
-  var pvModal = $("pvModal"), pvStage = $("pvStage"), pvFoot = $("pvFoot"), pvAd = $("pvAd");
+  var pvModal = $("pvModal"), pvStage = $("pvStage"), pvFoot = $("pvFoot"), pvAd = $("pvAd"), pvCopy = $("pvCopy");
   function pvOpen(c, node, opener){
     pv.card = c; pv.node = node; pv.opener = opener; pv.ad = 0; pv.fmt = "feed"; pv.crop = null;
     pvAd.textContent = "";
@@ -637,7 +694,7 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
   function pvClose(){
     pvModal.classList.add("hidden");
     clearTimeout(pv.timer); pv.seq++; pv.crop = null; pv.frame = null;
-    pvStage.textContent = ""; pvFoot.textContent = "";
+    pvStage.textContent = ""; pvFoot.textContent = ""; pvCopy.textContent = ""; pvCopy.classList.add("hidden");
     document.body.style.overflow = "";
     // La tarjeta pudo repintarse (un recorte cambia sus líneas): el foco vuelve a su botón.
     var see = pv.node && pv.node.querySelector(".see");
@@ -654,9 +711,13 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
   function pvLoad(tries){
     var my = ++pv.seq; clearTimeout(pv.timer);
     if (!tries){ pvMsg("Pidiendo la vista previa a Meta…"); pvFoot.textContent = ""; }
-    api("api/actions/" + pv.card.code + "/preview?ad=" + pv.ad + "&format=" + pv.fmt).then(function(r){
+    var url = pv.card.adId
+      ? "api/ads/" + pv.card.adId + "/preview?format=" + pv.fmt
+      : "api/actions/" + pv.card.code + "/preview?ad=" + pv.ad + "&format=" + pv.fmt;
+    api(url).then(function(r){
       if (my !== pv.seq || pv.crop) return;
       pv.last = r;
+      pvCopyFor(r.copy);
       if (r.src){ pvFrame(r); }
       else if (r.wait){
         pvMsg(r.wait);
@@ -666,6 +727,36 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
       pvFootFor(r.crop);
     }).catch(function(err){ if (my === pv.seq){ pvMsg(err.message, true); pvFoot.textContent = ""; } });
   }
+  // El texto entero del anuncio, al lado (debajo en el móvil): dentro del
+  // recuadro de Meta se corta y no se puede hacer scroll.
+  function pvCopyFor(c){
+    pvCopy.textContent = "";
+    pvCopy.classList.toggle("hidden", !c);
+    if (!c) return;
+    // En el móvil se abre con un toque, para no achicar el anuncio; en
+    // ordenador va siempre abierto, al lado.
+    var wide = window.matchMedia("(min-width:760px)").matches;
+    if (wide || !pvCopy.dataset.touched) pvCopy.open = wide;
+    pvCopy.appendChild(el("summary",null,"El texto del anuncio"));
+    var dl = el("dl");
+    function row(k, node){ dl.appendChild(el("dt",null,k)); var dd = el("dd"); if (typeof node === "string") dd.textContent = node; else dd.appendChild(node); dl.appendChild(dd); }
+    if (c.existingPost) row("Texto", "Sale con el texto de la publicación de Instagram, tal cual.");
+    if (c.headline) row("Titular", c.headline);
+    if (c.text){
+      var t = el("span");
+      if (c.cut){
+        t.appendChild(document.createTextNode(c.text.slice(0, c.cut)));
+        t.appendChild(el("span","cut","Hasta aquí, más o menos, se lee en el Feed sin pulsar «más»"));
+        t.appendChild(el("span","rest",c.text.slice(c.cut).replace(/^ +/,"")));
+      } else t.textContent = c.text;
+      row("Texto", t);
+    }
+    if (c.description) row("Descripción", c.description);
+    if (c.button) row("Botón", c.button + (c.goesTo ? " → " + c.goesTo : ""));
+    pvCopy.appendChild(dl);
+  }
+  // Lo que el dueño eligió (abierto o cerrado) se respeta al cambiar de pestaña.
+  pvCopy.addEventListener("toggle", function(){ if (!window.matchMedia("(min-width:760px)").matches) pvCopy.dataset.touched = "1"; });
   function pvFrame(r){
     pvStage.textContent = "";
     var box = el("div","pvm-fit");
@@ -714,6 +805,8 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
   function cropStart(crop){
     pv.seq++; clearTimeout(pv.timer);
     pv.crop = { original:crop.original, aspect:ASPECTS[pv.fmt][0], size:1, cx:0.5, cy:0.5, img:null, place:null };
+    // Recortando, todo el sitio es para el marco; el texto vuelve al salir.
+    pvCopy.classList.add("hidden");
     pvTabs();
     pvMsg("Cargando la foto…"); pvFoot.textContent = "";
     var img = new Image();
@@ -809,7 +902,12 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
     b.addEventListener("click", function(){ if (pv.crop) return; pv.fmt = b.dataset.f; pvTabs(); pvLoad(0); });
   });
   pvAd.addEventListener("change", function(){ pv.ad = Number(pvAd.value); pvLoad(0); });
-  window.addEventListener("resize", function(){ if (pv.crop && pv.crop.img) cropDraw(); else pvFit(); });
+  // Se reajusta cada vez que cambia el hueco: también cuando aparecen los
+  // botones de abajo, que llegan después del recuadro y le quitan alto (si
+  // no, el anuncio quedaba más grande que el hueco y cortado arriba y abajo).
+  function pvRefit(){ if (pv.crop && pv.crop.img) cropDraw(); else pvFit(); }
+  if (window.ResizeObserver) new ResizeObserver(pvRefit).observe(pvStage);
+  window.addEventListener("resize", pvRefit);
   function act(code, verb, card){
     api("api/actions/" + code + "/" + verb, { method:"POST" }).then(function(c){ renderCard(c, card); })
       .catch(function(err){ card.appendChild(el("div","err",err.message)); });
@@ -986,6 +1084,79 @@ header h1{font-size:18px;line-height:1.2;flex:1;min-width:0}
           var s = el("div"); s.appendChild(el("b",null,p[0])); s.appendChild(document.createTextNode(p[1])); n.appendChild(s);
         });
         box.appendChild(n);
+        body.appendChild(box);
+      });
+    }).catch(function(err){ body.className = "muted"; body.textContent = err.message; });
+  }
+
+  // Campañas creadas: campaña → conjuntos → anuncios, tal como están en Meta.
+  var ESTADO_CC = { ACTIVE:"Encendida", PAUSED:"Apagada", CAMPAIGN_PAUSED:"Apagada (la campaña)", ADSET_PAUSED:"Apagado (el conjunto)", IN_PROCESS:"Procesando", WITH_ISSUES:"Con problemas", PENDING_REVIEW:"En revisión", DISAPPROVED:"Rechazado" };
+  // La campaña es «encendida»; el conjunto y el anuncio, «encendido».
+  var MASC = { ACTIVE:"Encendido", PAUSED:"Apagado", PENDING_REVIEW:"En revisión" };
+  function pill(state, masc){
+    var label = (masc && MASC[state]) || ESTADO_CC[state] || state;
+    return el("span","pill " + (state === "ACTIVE" ? "on" : (state === "DISAPPROVED" || state === "WITH_ISSUES") ? "bad" : ""), label);
+  }
+  function audienceLines(t){
+    var lines = [];
+    var zone = (t.paises || []).map(function(c){ try { return new Intl.DisplayNames(["es"], { type: "region" }).of(c) || c; } catch (e) { return c; } })
+      .concat((t.ciudades || []).map(function(c){ return (c.nombre || c.key) + (c.radio_km ? " (+" + c.radio_km + " km)" : ""); }));
+    if (zone.length) lines.push("Zona: " + zone.join(", "));
+    if (t.edad) lines.push("Edad: " + t.edad.join("–") + " · Género: " + (Array.isArray(t.generos) ? (t.generos[0] === 2 ? "mujeres" : "hombres") : "todos"));
+    if (Array.isArray(t.plataformas)) lines.push("Dónde sale: " + t.plataformas.map(function(p){ return p === "instagram" ? "Instagram" : p; }).join(", "));
+    if (t.intereses && t.intereses.length) lines.push("Intereses: " + t.intereses.map(function(i){ return i.name; }).join(", "));
+    if (t.solo_a && t.solo_a.length) lines.push("Sólo a: " + t.solo_a.join(", "));
+    if (t.nunca_a && t.nunca_a.length) lines.push("Nunca a: " + t.nunca_a.join(", "));
+    return lines;
+  }
+  function loadCreated(){
+    var body = $("createdBody");
+    body.className = "muted"; body.textContent = "Cargando…";
+    api("api/campaigns").then(function(d){
+      body.className = ""; body.textContent = "";
+      if (!d.tree.length){ body.appendChild(el("p","muted","Todavía no hay campañas. Pídele al chat que te ayude a crear la primera.")); return; }
+      d.tree.forEach(function(c){
+        var box = el("details","cc");
+        var sum = el("summary"); var who = el("div","who");
+        who.appendChild(el("h3",null,c.nombre));
+        var budget = c.conjuntos.reduce(function(s, x){ return s + (x.presupuesto_diario_eur || 0); }, 0);
+        var ads = c.conjuntos.reduce(function(s, x){ return s + x.anuncios.length; }, 0);
+        var kind = c.conjuntos[0] && c.conjuntos[0].objetivo_es;
+        who.appendChild(el("div","sub",[kind, "creada el " + c.creada.split("-").reverse().join("/"), eur(budget) + " al día", c.conjuntos.length + (c.conjuntos.length === 1 ? " conjunto" : " conjuntos"), ads + (ads === 1 ? " anuncio" : " anuncios")].filter(Boolean).join(" · ")));
+        sum.appendChild(who); sum.appendChild(pill(c.estado_real)); box.appendChild(sum);
+        var inner = el("div","cc-body");
+        if (!c.conjuntos.length) inner.appendChild(el("p","muted","Esta campaña no tiene conjuntos de anuncios."));
+        c.conjuntos.forEach(function(s){
+          var set = el("div","cs");
+          var h = el("h4"); h.appendChild(el("span",null,"Conjunto: " + s.nombre)); h.appendChild(pill(s.estado_real, true)); set.appendChild(h);
+          var ul = el("ul");
+          [s.presupuesto_diario_eur ? "Presupuesto: " + eur(s.presupuesto_diario_eur) + " al día" : null].concat(audienceLines(s.segmentacion || {}))
+            .filter(Boolean).forEach(function(l){ ul.appendChild(el("li",null,l)); });
+          set.appendChild(ul);
+          if (!s.anuncios.length) set.appendChild(el("p","muted","Sin anuncios."));
+          s.anuncios.forEach(function(a){
+            var row = el("div","ca");
+            if (a.miniatura){ var img = el("img"); img.src = a.miniatura; img.alt = ""; img.loading = "lazy"; img.referrerPolicy = "no-referrer"; row.appendChild(img); }
+            var what = el("div","what");
+            var top = el("div","top"); top.appendChild(el("b",null,a.titular || a.nombre)); what.appendChild(top);
+            what.appendChild(pill(a.estado_real, true));
+            if (a.publicacion_de_instagram) what.appendChild(el("p",null,"Publicación de Instagram, con su propio texto."));
+            if (a.texto) what.appendChild(el("p",null,a.texto.length > 160 ? a.texto.slice(0,160) + "…" : a.texto));
+            if (a.enlace){
+              var dest = a.enlace;
+              try { var u = new URL(a.enlace); dest = u.hostname + u.pathname; } catch (e) {}
+              what.appendChild(el("p",null,"Lleva a: " + dest));
+            }
+            if (a.rechazo) what.appendChild(el("p","bad","Meta lo rechazó: " + Object.values(a.rechazo).map(function(v){ return typeof v === "string" ? v : JSON.stringify(v); }).join(" · ")));
+            var see = el("button","ghost see","Ver cómo queda"); see.type = "button";
+            see.addEventListener("click", function(){ pvOpen({ adId:a.id, title:"Anuncio «" + (a.titular || a.nombre) + "»", previews:[a.nombre] }, row, see); });
+            what.appendChild(see);
+            row.appendChild(what);
+            set.appendChild(row);
+          });
+          inner.appendChild(set);
+        });
+        box.appendChild(inner);
         body.appendChild(box);
       });
     }).catch(function(err){ body.className = "muted"; body.textContent = err.message; });

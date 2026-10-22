@@ -72,12 +72,16 @@ export async function recordFailure(db: D1Database, ip: string): Promise<void> {
   await db.prepare(`delete from login_failures where at < datetime('now', '-1 day')`).run();
 }
 
-/** `user`: quién entró, en minúsculas (los dos pasos se exigen sólo al dueño). */
-export async function startSession(db: D1Database, user: string): Promise<string> {
+/**
+ * `user`: quién entró, en minúsculas (los dos pasos se exigen sólo al dueño).
+ * `twoFactor`: si al entrar se dio el código de la app. Queda en la sesión
+ * para que cada ruta lo pueda exigir, no sólo la de entrar.
+ */
+export async function startSession(db: D1Database, user: string, twoFactor = false): Promise<string> {
   const token = b64(crypto.getRandomValues(new Uint8Array(32))).replace(/[+/=]/g, "");
   await db
-    .prepare(`insert into sessions (token_hash, expires_at, user) values (?, datetime('now', ?), ?)`)
-    .bind(await sha256(token), `+${SESSION_DAYS} days`, user)
+    .prepare(`insert into sessions (token_hash, expires_at, user, two_factor) values (?, datetime('now', ?), ?, ?)`)
+    .bind(await sha256(token), `+${SESSION_DAYS} days`, user, twoFactor ? 1 : 0)
     .run();
   await db.prepare(`delete from sessions where expires_at < datetime('now')`).run();
   return token;
@@ -101,18 +105,31 @@ function readCookie(request: Request): string | null {
   return null;
 }
 
+export type Session = { user: string; twoFactor: boolean };
+
 /**
- * Quién tiene esta sesión, o null si no hay sesión. Las sesiones de antes
- * de que hubiera más de un usuario no guardaban quién: eran del dueño.
+ * Quién tiene esta sesión y si pasó los dos pasos, o null si no hay sesión.
+ *
+ * Una sesión sin usuario no vale (22/10/2026): las escribían versiones
+ * viejas del panel, de antes de los dos pasos, que seguían publicadas en
+ * sus direcciones de versión de workers.dev con la misma base. Antes se
+ * tomaban por sesiones del dueño y daban el panel sin el código del móvil.
  */
-export async function sessionUser(request: Request, db: D1Database, fallback: string): Promise<string | null> {
+export async function sessionUser(request: Request, db: D1Database): Promise<Session | null> {
   const token = readCookie(request);
   if (!token) return null;
   const row = await db
-    .prepare(`select user from sessions where token_hash = ? and expires_at > datetime('now')`)
+    .prepare(`select user, two_factor from sessions where token_hash = ? and expires_at > datetime('now')`)
     .bind(await sha256(token))
-    .first<{ user: string | null }>();
-  return row ? (row.user ?? fallback.toLowerCase()) : null;
+    .first<{ user: string | null; two_factor: number | null }>();
+  if (!row?.user) return null;
+  return { user: row.user, twoFactor: row.two_factor === 1 };
+}
+
+/** La sesión que acaba de dar el código de la app (al activar los dos pasos). */
+export async function markTwoFactor(request: Request, db: D1Database): Promise<void> {
+  const token = readCookie(request);
+  if (token) await db.prepare(`update sessions set two_factor = 1 where token_hash = ?`).bind(await sha256(token)).run();
 }
 
 /**

@@ -9,7 +9,7 @@ import { run } from "../src/executor/index.ts";
 import { apply, type Ctx } from "../src/executor/writer.ts";
 import { runTool } from "../src/panel/tools.ts";
 import { validate, type Action } from "../src/shared/actions.ts";
-import { META_VARS, fakeD1, fakeKV, stubFetch, type Call } from "./fakes.ts";
+import { META_VARS, accountObjects, fakeD1, fakeKV, stubFetch, type Call } from "./fakes.ts";
 
 const limits = { maxAdSetDailyEur: 20, maxAccountDailyEur: 30, country: "ES" };
 
@@ -93,6 +93,8 @@ test("la etapa caliente no se enciende con un público de menos de 100 personas"
   const meta = stubFetch((c: Call) => {
     const u = new URL(c.url);
     if (c.method === "POST") throw new Error("la encendió");
+    const known = accountObjects(c, { campaigns: [{ id: "120000000000001", name: "Calientes", status: "PAUSED" }] });
+    if (known) return known;
     if (u.pathname.endsWith("/120000000000001/adsets")) {
       return { data: [{ targeting: { custom_audiences: [{ id: "238000000000001" }] } }] };
     }

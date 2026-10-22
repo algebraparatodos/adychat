@@ -10,6 +10,7 @@ import {
   clearCookie,
   endOtherSessions,
   endSession,
+  markTwoFactor,
   sessionUser,
   recordFailure,
   sessionCookie,
@@ -20,7 +21,7 @@ import {
 import { turn, type ChatEnv } from "./chat.ts";
 import { KNOWLEDGE_MAX, createChat, deleteChat, getKnowledge, listChats, renameChat, resolveChat, saveKnowledge } from "./chats.ts";
 import { MetaReader, insights, structure } from "./meta-read.ts";
-import { FORMATS, preview, previewAds, type Format } from "./preview.ts";
+import { FORMATS, adPreview, copyOf, preview, previewAds, type Format } from "./preview.ts";
 import { PLACEMENTS, describe, validate, type Action, type Placement } from "../shared/actions.ts";
 import { PAGE } from "./ui.ts";
 import * as twoFactor from "./twofactor.ts";
@@ -145,6 +146,7 @@ async function login(request: Request, env: Env): Promise<Response> {
     return json({ error: "Usuario o contraseña incorrectos." }, 401);
   }
   // Con los dos pasos activados, sin el código de la app no hay sesión (sólo el dueño).
+  let passedTwoFactor = false;
   if (isMain && (await twoFactor.isEnabled(env.DB))) {
     const code = String(body.code ?? "").replace(/\s/g, "");
     if (!code) return json({ need2fa: true, error: "Escribe el código de 6 cifras de tu app de autenticación." }, 401);
@@ -152,8 +154,9 @@ async function login(request: Request, env: Env): Promise<Response> {
       await recordFailure(env.DB, ip);
       return json({ need2fa: true, error: "El código no es correcto o ya se usó. Prueba con el siguiente." }, 401);
     }
+    passedTwoFactor = true;
   }
-  const token = await startSession(env.DB, user);
+  const token = await startSession(env.DB, user, passedTwoFactor);
   return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token, env.BASE_PATH ?? "") });
 }
 
@@ -198,8 +201,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "POST" && path === "/api/login") return login(request, env);
 
   if (!path.startsWith("/api/")) return new Response("No existe", { status: 404 });
-  const user = await sessionUser(request, env.DB, env.PANEL_USER);
-  if (!user) return json({ error: "sesión" }, 401);
+  const session = await sessionUser(request, env.DB);
+  if (!session) return json({ error: "sesión" }, 401);
+  const { user } = session;
   const isMain = user === env.PANEL_USER.toLowerCase();
 
   if (method === "POST" && path === "/api/logout") {
@@ -209,7 +213,8 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   // Para el dueño los dos pasos son obligatorios: sin activarlos, la sesión
   // sólo sirve para activarlos.
-  if (isMain && !(await twoFactor.isEnabled(env.DB))) {
+  const twoFactorOn = isMain && (await twoFactor.isEnabled(env.DB));
+  if (isMain && !twoFactorOn) {
     if (method === "GET" && path === "/api/2fa/setup") {
       return json(await twoFactor.setup(env.DB, env.TOTP_KEY, env.PANEL_USER, panelTitle(env)));
     }
@@ -222,11 +227,21 @@ async function route(request: Request, env: Env): Promise<Response> {
         await recordFailure(env.DB, ip);
         return json({ error: `El código no es correcto. Mira que sea el de «${panelTitle(env)}» y que no haya cambiado.` }, 400);
       }
-      // Cualquier otra sesión abierta antes queda fuera: vuelve a entrar con el código.
+      // Esta sesión acaba de dar el código; cualquier otra abierta antes queda
+      // fuera y vuelve a entrar con él.
+      await markTwoFactor(request, env.DB);
       await endOtherSessions(request, env.DB, user, true);
       return json({ ok: true });
     }
     return json({ setup2fa: true, error: "Antes tienes que activar la verificación en dos pasos." }, 403);
+  }
+  // Con los dos pasos activados, cada ruta exige una sesión que los pasó, no
+  // sólo la de entrar: una versión vieja del panel (o cualquier otro camino
+  // a la misma base) puede abrir sesiones sin pedir el código. Se cierra y
+  // vuelve a la pantalla de entrar.
+  if (twoFactorOn && !session.twoFactor) {
+    await endSession(request, env.DB);
+    return json({ error: "sesión" }, 401, { "Set-Cookie": clearCookie(env.BASE_PATH ?? "") });
   }
 
   if (method === "GET" && path === "/api/state") {
@@ -277,7 +292,9 @@ async function route(request: Request, env: Env): Promise<Response> {
     const sign = env.MEDIA_SIGNING_KEY
       ? (key: string) => signedMediaUrl(`${url.origin}${base}`, key, env.MEDIA_SIGNING_KEY ?? "", 900)
       : undefined;
-    return json(await preview(env.DB, meta, env, JSON.parse(row.payload) as Action, index, format as Format, row.state, sign));
+    const action = JSON.parse(row.payload) as Action;
+    const shown = await preview(env.DB, meta, env, action, index, format as Format, row.state, sign);
+    return json({ ...shown, copy: copyOf(env, action, index) });
   }
 
   // El recorte de la foto de un anuncio para un sitio de Instagram, hecho en
@@ -381,6 +398,25 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "PUT" && verb && /^\d+$/.test(verb)) return putChunk(env, key, Number(verb), request, json);
     if (method === "POST" && verb === "finish") return finishUpload(env, key, json);
     if (method === "POST" && verb === "delete") return removeMedia(env, key, json);
+  }
+
+  // «Campañas creadas»: campañas → conjuntos → anuncios, tal como están en Meta.
+  if (method === "GET" && path === "/api/campaigns") {
+    if (!env.META_TOKEN_READ || missingMeta(env).includes("META_ACCOUNT_ID")) {
+      return json({ error: "La cuenta de Meta todavía no está conectada al panel." }, 503);
+    }
+    try {
+      return json({ tree: await structure(new MetaReader(env.META_TOKEN_READ, env.META_ACCOUNT_ID), true) });
+    } catch (err) {
+      return json({ error: String(err instanceof Error ? err.message : err) }, 502);
+    }
+  }
+  const adPreviewMatch = path.match(/^\/api\/ads\/(\d{5,25})\/preview$/);
+  if (method === "GET" && adPreviewMatch) {
+    if (!env.META_TOKEN_READ || missingMeta(env).includes("META_ACCOUNT_ID")) return json({ error: "La cuenta de Meta todavía no está conectada al panel." });
+    const format = url.searchParams.get("format") ?? "feed";
+    if (!Object.hasOwn(FORMATS, format)) return json({ error: "formato no válido" }, 400);
+    return json(await adPreview(new MetaReader(env.META_TOKEN_READ, env.META_ACCOUNT_ID), adPreviewMatch[1] ?? "", format as Format));
   }
 
   if (method === "GET" && path === "/api/overview") {

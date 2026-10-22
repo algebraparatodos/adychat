@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { syncLeads } from "../src/executor/leads.ts";
 import { apply, type Ctx } from "../src/executor/writer.ts";
 import { validate, type Action, type AdCopy, type Objective } from "../src/shared/actions.ts";
-import { META_VARS, fakeD1, stubFetch, type Call } from "./fakes.ts";
+import { META_VARS, accountObjects, fakeD1, stubFetch, type Call } from "./fakes.ts";
 
 const limits = { maxAdSetDailyEur: 20, maxAccountDailyEur: 30, country: "ES" };
 
@@ -168,6 +168,9 @@ test("añadir un anuncio: el objetivo se lee del conjunto en Meta, no de la acci
   const { ctx } = ctxWith();
   const meta = stubFetch((c: Call) => {
     const p = new URL(c.url).pathname;
+    const known = accountObjects(c, { adsets: [{ id: "120000000000002", name: "Mensajes", status: "ACTIVE", daily_budget: "500" }] });
+    if (known) return known;
+    if (c.method === "GET" && p.endsWith("/adsets")) return { data: [] };
     if (c.method === "GET" && p.endsWith("/120000000000002")) {
       return { destination_type: "INSTAGRAM_DIRECT", optimization_goal: "CONVERSATIONS", campaign: { id: "120000000000001", name: "Mensajes", objective: "OUTCOME_ENGAGEMENT" } };
     }

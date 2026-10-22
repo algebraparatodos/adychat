@@ -71,6 +71,20 @@ export function stubFetch(handler: (c: Call) => unknown): { calls: Call[]; resto
   return { calls, restore: () => void (globalThis.fetch = original) };
 }
 
+/**
+ * Lo que hay en la cuenta, para cuando se pregunta qué es un id
+ * (`shared/objects.ts`). Contesta esa consulta; cualquier otra, undefined.
+ */
+export type AccountObjects = Partial<Record<"campaigns" | "adsets" | "ads", Record<string, unknown>[]>>;
+export function accountObjects(c: Call, objects: AccountObjects): unknown {
+  const u = new URL(c.url);
+  const m = u.pathname.match(/\/act_\d+\/(campaigns|adsets|ads)$/);
+  const filtering = u.searchParams.get("filtering");
+  if (c.method !== "GET" || !m || !filtering) return undefined;
+  const ids = (JSON.parse(filtering) as { value: string[] }[])[0]?.value ?? [];
+  return { data: (objects[m[1] as keyof AccountObjects] ?? []).filter((o) => ids.includes(String(o["id"]))) };
+}
+
 export const META_VARS = {
   META_ACCOUNT_ID: "act_1234567890",
   META_PAGE_ID: "111111111111",

@@ -105,7 +105,17 @@ These live in code that the model does not control.
 - **Spend above the caps.** A daily cap per ad set and a daily cap for
   the whole account, counting everything that is turned on, computed from
   Meta at the moment of applying. They are Worker variables of the
-  executor and only change by deploying.
+  executor and only change by deploying. The account cap is checked on
+  everything that can raise the spend, at any level, and counts campaign
+  budgets; if something turned on has a lifetime budget, the cap cannot be
+  checked and the action is rejected.
+- **Act on something other than what the card says.** The id, the level
+  and the name in a proposal come from the model, so none of them is
+  trusted: the panel when proposing, and the executor again when applying,
+  look the id up among the campaigns, ad sets and ads of the configured
+  account (`src/shared/objects.ts`) and reject it if it is not there or is
+  not the level the action claims. The card shows the name and budget Meta
+  returns, not the model's.
 - **Start spending by itself.** Every campaign is created `PAUSED` and the
   campaign is the only switch. Turning it on is its own proposal, with its
   own card.
@@ -160,7 +170,10 @@ These live in code that the model does not control.
 - **Keeps conversations apart.** Several conversations, each with its
   own history and its own uploaded material.
 - **Locks the door.** Password plus mandatory two-step verification
-  (TOTP) for the main user. The secret is encrypted in the database.
+  (TOTP) for the main user. The secret is encrypted in the database. The
+  session records whether the code was given, and every route checks it,
+  not just the login. Preview URLs are off in the template: with them,
+  Cloudflare keeps old versions of the panel reachable on the same database.
 
 ## Setup
 

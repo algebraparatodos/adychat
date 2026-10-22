@@ -15,8 +15,13 @@
   // fill that one in and deploy with `npm run deploy`. To serve the panel
   // under your own domain, add a route there, for example
   //   "routes": [{ "pattern": "example.com/panel*", "zone_name": "example.com" }]
-  // and set BASE_PATH to "/panel".
+  // and set BASE_PATH to "/panel", and turn workers_dev off: the panel
+  // should answer at one address only.
   "workers_dev": true,
+  // Never on. With preview URLs, Cloudflare keeps every old version live at
+  // <version>-<worker>.<subdomain>.workers.dev, sharing the same database:
+  // a version from before a security fix stays reachable, fix or not.
+  "preview_urls": false,
   "observability": { "enabled": true },
 
   "d1_databases": [

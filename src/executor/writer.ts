@@ -14,10 +14,11 @@
  * el «·» llegó a Meta roto en otra cuenta y no se puede recuperar.
  */
 
-import type { Action, AdCopy, Audience, AudienceKind, Limits, Objective, Placement } from "../shared/actions.ts";
+import type { Action, AdCopy, Audience, AudienceKind, Level, Limits, Objective, Placement } from "../shared/actions.ts";
 import { AUDIENCE_KINDS, audienceTag, objectiveFromMeta, regionName, validate } from "../shared/actions.ts";
 import { NO_ENHANCEMENTS, creativeOf, destinationOf, type ImageRef, type ReadyMedia } from "../shared/creative.ts";
 import { GRAPH, limitsOf, type MetaVars } from "../shared/env.ts";
+import { mismatch, whatIs, type GraphGet } from "../shared/objects.ts";
 
 export type MediaInfo = {
   kind: "image" | "video";
@@ -99,6 +100,19 @@ async function graph(ctx: Ctx, path: string, body?: Record<string, unknown>): Pr
 }
 
 const cents = (eur: number): number => Math.round(eur * 100);
+const has = (c: string | undefined): boolean => Number(c ?? 0) > 0;
+const refuse = (error: string): Outcome => ({ ok: false, result: null, undo: null, error });
+
+/**
+ * El id de la acción tiene que ser, según Meta, `level` de ESTA cuenta
+ * (22/10/2026). El nivel y el nombre de la acción los escribió el modelo:
+ * con el id de una campaña y el nivel «anuncio», encender se saltaba el
+ * tope de la cuenta. Devuelve el motivo para no tocarlo, o null.
+ */
+async function notWhatItSays(ctx: Ctx, id: string, level: Level): Promise<string | null> {
+  const get: GraphGet = (path, params) => graph(ctx, `${path}?${new URLSearchParams(params)}`);
+  return mismatch(await whatIs(get, ctx.META_ACCOUNT_ID, id), id, level);
+}
 
 /**
  * El negocio sólo vende en su país (COUNTRY). Una clave de ciudad no
@@ -433,23 +447,29 @@ async function createCampaign(ctx: Ctx, a: Extract<Action, { type: "create_campa
   }
 }
 
-type AdSetRow = { id: string; status: string; daily_budget?: string; campaign?: { id: string; status: string } };
+type Budget = { daily_budget?: string; lifetime_budget?: string };
+type AdSetRow = Budget & { id: string; status: string; campaign?: Budget & { id: string; status: string } };
 
 /**
  * Lo que costaría al día todo lo encendido si se hace este cambio. Un
- * conjunto sólo gasta si él y su campaña están encendidos.
+ * conjunto sólo gasta si él y su campaña están encendidos; con presupuesto
+ * de campaña gasta la campaña, una vez, si tiene algún conjunto encendido.
+ * Encender o pausar un anuncio no cambia la cuenta: lo que gasta es su
+ * conjunto, que ya está contado. null: algo encendido tiene presupuesto
+ * total, que no se puede contar por día.
  */
 async function projectedDailyEur(
   ctx: Ctx,
-  change: { level: "campaign" | "adset"; id: string; status?: string; budgetEur?: number },
-): Promise<number> {
+  change: { level: Level; id: string; status?: string; budgetEur?: number },
+): Promise<number | null> {
   const res = await graph(
     ctx,
-    `${ctx.META_ACCOUNT_ID}/adsets?fields=id,status,daily_budget,campaign{id,status}&limit=200` +
+    `${ctx.META_ACCOUNT_ID}/adsets?fields=id,status,daily_budget,lifetime_budget,campaign{id,status,daily_budget,lifetime_budget}&limit=200` +
       `&effective_status=${encodeURIComponent(JSON.stringify(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "IN_PROCESS", "WITH_ISSUES", "PENDING_REVIEW"]))}`,
   );
   const rows = (res["data"] ?? []) as AdSetRow[];
   let total = 0;
+  const campaignBudgets = new Map<string, number>();
   for (const r of rows) {
     let adSetStatus = r.status;
     let campaignStatus = r.campaign?.status ?? "PAUSED";
@@ -459,17 +479,25 @@ async function projectedDailyEur(
       if (change.budgetEur !== undefined) budget = change.budgetEur;
     }
     if (change.level === "campaign" && r.campaign?.id === change.id && change.status) campaignStatus = change.status;
-    if (adSetStatus === "ACTIVE" && campaignStatus === "ACTIVE") total += budget;
+    if (adSetStatus !== "ACTIVE" || campaignStatus !== "ACTIVE") continue;
+    if (has(r.lifetime_budget) || has(r.campaign?.lifetime_budget)) return null;
+    if (r.campaign && has(r.campaign.daily_budget)) campaignBudgets.set(r.campaign.id, Number(r.campaign.daily_budget) / 100);
+    else total += budget;
   }
+  for (const b of campaignBudgets.values()) total += b;
   return total;
 }
 
+/** El tope de la cuenta, mirado en Meta antes de todo lo que puede subir el gasto. */
 async function checkAccountCap(
   ctx: Ctx,
   limits: Limits,
   change: Parameters<typeof projectedDailyEur>[1],
 ): Promise<string | null> {
   const projected = await projectedDailyEur(ctx, change);
+  if (projected === null) {
+    return "hay algo encendido con presupuesto total (no diario) y así no se puede comprobar el tope de la cuenta; eso se cambia desde el Administrador de anuncios";
+  }
   if (projected > limits.maxAccountDailyEur) {
     return `con este cambio lo encendido gastaría ${projected.toFixed(2)} € al día y el tope de la cuenta es ${limits.maxAccountDailyEur} €`;
   }
@@ -670,16 +698,23 @@ export async function apply(action: Action, ctx: Ctx): Promise<Outcome> {
         return await createAudience(ctx, action);
 
       case "set_status": {
-        if (action.status === "ACTIVE" && action.level !== "ad") {
-          const small = await tooSmall(ctx, action.level, action.id);
-          if (small) return { ok: false, result: null, undo: null, error: small };
+        const wrong = await notWhatItSays(ctx, action.id, action.level);
+        if (wrong) return refuse(wrong);
+        if (action.status === "ACTIVE") {
+          if (action.level !== "ad") {
+            const small = await tooSmall(ctx, action.level, action.id);
+            if (small) return refuse(small);
+          }
+          // Siempre, en cualquier nivel: el nivel ya está comprobado en Meta.
           const over = await checkAccountCap(ctx, limits, { level: action.level, id: action.id, status: "ACTIVE" });
-          if (over) return { ok: false, result: null, undo: null, error: over };
+          if (over) return refuse(over);
         }
         return await setField(ctx, action.id, "status", action.status);
       }
 
       case "set_budget": {
+        const wrong = await notWhatItSays(ctx, action.adSetId, "adset");
+        if (wrong) return refuse(wrong);
         const over = await checkAccountCap(ctx, limits, { level: "adset", id: action.adSetId, budgetEur: action.dailyBudgetEur });
         if (over) return { ok: false, result: null, undo: null, error: over };
         return await setField(ctx, action.adSetId, "daily_budget", cents(action.dailyBudgetEur));
@@ -688,10 +723,18 @@ export async function apply(action: Action, ctx: Ctx): Promise<Outcome> {
       case "set_audience": {
         const abroad = await outsideCountry(ctx, action.audience);
         if (abroad) return { ok: false, result: null, undo: null, error: abroad };
+        const wrong = await notWhatItSays(ctx, action.adSetId, "adset");
+        if (wrong) return refuse(wrong);
         return await setAudience(ctx, action);
       }
 
       case "add_ad": {
+        const wrong = await notWhatItSays(ctx, action.adSetId, "adset");
+        if (wrong) return refuse(wrong);
+        // Nace encendido: si el conjunto gasta, ya está contado, pero la
+        // cuenta tiene que estar dentro del tope antes de sumarle nada.
+        const over = await checkAccountCap(ctx, limits, { level: "ad", id: action.adSetId });
+        if (over) return refuse(over);
         // El objetivo se lee de Meta, no de la acción: es el del conjunto.
         const adSet = await graph(ctx, `${action.adSetId}?fields=destination_type,optimization_goal,campaign{id,name,objective}`);
         const camp = (adSet["campaign"] ?? {}) as { id?: string; name?: string; objective?: string };
@@ -706,8 +749,11 @@ export async function apply(action: Action, ctx: Ctx): Promise<Outcome> {
         return { ok: true, result: made, undo: null, error: null };
       }
 
-      case "update_ad_copy":
+      case "update_ad_copy": {
+        const wrong = await notWhatItSays(ctx, action.adId, "ad");
+        if (wrong) return refuse(wrong);
         return await updateCopy(ctx, action);
+      }
 
       default:
         return { ok: false, result: null, undo: null, error: "el ejecutor no sabe hacer esta acción" };
